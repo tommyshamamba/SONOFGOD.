@@ -7,7 +7,7 @@
 # - Resilient WSS connection with auto-failover
 # - Superior color-coded logging for developer experience
 
-import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re
+import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re, inspect
 
 # ============================ Logging Setup (from ALPHA.py) ============================
 class ColorFormatter(logging.Formatter):
@@ -354,10 +354,14 @@ def _mask_url(u: str) -> str:
     except Exception:
         return u
 
-async def _probe_wss_latency(url: str, attempt_kwargs: List[Dict[str, Any]]) -> Tuple[bool, float]:
+async def _probe_wss_latency(
+    url: str, attempt_kwargs: List[Dict[str, Any]]
+) -> Tuple[bool, float, Optional[str]]:
     if WSProvider is None or AsyncWeb3 is None:
-        return False, float("inf")
+        return False, float("inf"), "AsyncWeb3 unavailable"
     best = float("inf"); ok = False
+    last_error: Optional[str] = None
+    attempt_errors: List[str] = []
     for pk in attempt_kwargs:
         t0 = time.time()
         provider = None
@@ -372,15 +376,42 @@ async def _probe_wss_latency(url: str, attempt_kwargs: List[Dict[str, Any]]) -> 
                 ok = True
                 dt = time.time() - t0
                 if dt < best: best = dt
-        except Exception:
+            else:
+                details: List[str] = ["is_connected() returned False"]
+                ws_obj = getattr(provider, "ws", None) or getattr(provider, "_ws", None)
+                close_code = getattr(ws_obj, "close_code", None)
+                close_reason = getattr(ws_obj, "close_reason", None)
+                if close_code is not None:
+                    details.append(f"close_code={close_code}")
+                if close_reason:
+                    details.append(f"close_reason={close_reason}")
+                detail_msg = ", ".join(details)
+                last_error = detail_msg
+                key_label = ",".join(sorted(pk.keys())) if pk else "<default>"
+                attempt_errors.append(f"{key_label}: {detail_msg}")
+                logger.warning(
+                    "WSS probe inactive for %s with kwargs=%s: %s",
+                    _mask_url(url), key_label, last_error,
+                )
+        except Exception as e:
             ok = False
+            detail_msg = f"{type(e).__name__}: {e}".strip()
+            last_error = detail_msg
+            key_label = ",".join(sorted(pk.keys())) if pk else "<default>"
+            attempt_errors.append(f"{key_label}: {repr(e)}")
+            logger.warning(
+                "WSS probe error for %s with kwargs=%s: %s",
+                _mask_url(url), key_label, detail_msg or repr(e),
+            )
         finally:
             if provider:
                 try:
                     await provider.disconnect()
                 except Exception:
                     pass
-    return ok, best
+    if attempt_errors:
+        last_error = "; ".join(attempt_errors)
+    return ok, best, last_error
 
 async def _init_wss() -> Optional["AsyncWeb3"]:
     global aw3, WSS_ACTIVE_URL
@@ -406,7 +437,18 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     ws_timeout = _env_float("WS_TIMEOUT_SEC", 15.0)
 
     attempt_kwargs: List[Dict[str, Any]] = []
-    base_kwargs: Dict[str, Any] = {"request_timeout": ws_timeout} if ws_timeout > 0 else {}
+    base_kwargs: Dict[str, Any] = {}
+    if ws_timeout > 0:
+        try:
+            sig_params = set(inspect.signature(WSProvider.__init__).parameters)
+        except Exception:
+            sig_params = set()
+        if "websocket_timeout" in sig_params:
+            base_kwargs["websocket_timeout"] = ws_timeout
+        elif "timeout" in sig_params:
+            base_kwargs["timeout"] = ws_timeout
+        elif "request_timeout" in sig_params:
+            base_kwargs["request_timeout"] = ws_timeout
     if ws_kw:
         kw = dict(base_kwargs); kw["websocket_kwargs"] = ws_kw; attempt_kwargs.append(kw)
     if base_kwargs: attempt_kwargs.append(dict(base_kwargs))
@@ -414,12 +456,15 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
 
     scores: List[Tuple[float, str]] = []
     for url in candidates:
-        ok, dt = await _probe_wss_latency(url, attempt_kwargs)
+        ok, dt, err = await _probe_wss_latency(url, attempt_kwargs)
         if ok:
             scores.append((dt, url))
             logger.info("WSS probe OK: %s (latency=%.1fms)", _mask_url(url), dt * 1000.0)
         else:
-            logger.warning("WSS probe FAIL: %s", _mask_url(url))
+            if err:
+                logger.warning("WSS probe FAIL: %s | last_error=%s", _mask_url(url), err)
+            else:
+                logger.warning("WSS probe FAIL: %s", _mask_url(url))
 
     if not scores:
         logger.error("All WSS probes failed; backruns/mempool disabled.")
@@ -439,7 +484,10 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
-            logger.error("WSS final connection attempt failed for %s: %s", _mask_url(best_url), e)
+            logger.error(
+                "WSS final connection attempt failed for %s with kwargs=%s: %r",
+                _mask_url(best_url), list(pk.keys()), e,
+            )
     
     logger.error("Could not establish WSS connection with selected endpoint %s", _mask_url(best_url))
     return None
