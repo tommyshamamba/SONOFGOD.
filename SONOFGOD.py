@@ -7,7 +7,7 @@
 # - Resilient WSS connection with auto-failover
 # - Superior color-coded logging for developer experience
 
-import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re
+import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re, inspect
 
 # ============================ Logging Setup (from ALPHA.py) ============================
 class ColorFormatter(logging.Formatter):
@@ -372,8 +372,12 @@ async def _probe_wss_latency(url: str, attempt_kwargs: List[Dict[str, Any]]) -> 
                 ok = True
                 dt = time.time() - t0
                 if dt < best: best = dt
-        except Exception:
+        except Exception as e:
             ok = False
+            logger.debug(
+                "WSS probe error for %s with kwargs=%s: %s",
+                _mask_url(url), list(pk.keys()), e,
+            )
         finally:
             if provider:
                 try:
@@ -406,7 +410,18 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     ws_timeout = _env_float("WS_TIMEOUT_SEC", 15.0)
 
     attempt_kwargs: List[Dict[str, Any]] = []
-    base_kwargs: Dict[str, Any] = {"request_timeout": ws_timeout} if ws_timeout > 0 else {}
+    base_kwargs: Dict[str, Any] = {}
+    if ws_timeout > 0:
+        try:
+            sig_params = set(inspect.signature(WSProvider.__init__).parameters)
+        except Exception:
+            sig_params = set()
+        if "websocket_timeout" in sig_params:
+            base_kwargs["websocket_timeout"] = ws_timeout
+        elif "timeout" in sig_params:
+            base_kwargs["timeout"] = ws_timeout
+        elif "request_timeout" in sig_params:
+            base_kwargs["request_timeout"] = ws_timeout
     if ws_kw:
         kw = dict(base_kwargs); kw["websocket_kwargs"] = ws_kw; attempt_kwargs.append(kw)
     if base_kwargs: attempt_kwargs.append(dict(base_kwargs))
