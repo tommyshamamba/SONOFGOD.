@@ -8,6 +8,7 @@
 # - Superior color-coded logging for developer experience
 
 import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re, inspect
+from typing import Dict, List, Tuple, Optional, Any, Set, Callable, Awaitable
 
 # ============================ Logging Setup (from ALPHA.py) ============================
 class ColorFormatter(logging.Formatter):
@@ -60,7 +61,6 @@ if os.name == "nt":
     except Exception as e:
         logger.warning("Failed to set WindowsSelectorEventLoopPolicy: %s", e)
 
-from typing import Dict, List, Tuple, Optional, Any, Set, Callable, Awaitable
 from decimal import Decimal, ROUND_FLOOR, getcontext
 from urllib.parse import urlparse
 
@@ -484,9 +484,13 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
+            try:
+                kwargs_keys = list(pk.keys()) if isinstance(pk, dict) else []
+            except Exception:
+                kwargs_keys = []
             logger.error(
                 "WSS final connection attempt failed for %s with kwargs=%s: %r",
-                _mask_url(best_url), list(pk.keys()), e,
+                _mask_url(best_url), kwargs_keys, e,
             )
     
     logger.error("Could not establish WSS connection with selected endpoint %s", _mask_url(best_url))
