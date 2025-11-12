@@ -148,7 +148,7 @@ CHAINSTACK_WSS  = os.getenv("CHAINSTACK_WSS", "").strip()
 LAVA_HTTP       = os.getenv("LAVA_HTTP", "").strip()
 LAVA_WSS        = os.getenv("LAVA_WSS", "").strip()
 WSS_URL_OVERRIDE = os.getenv("WSS_URL_OVERRIDE", "").strip()
-WSS_SUBSCRIBE_ORDER = [s.strip() for s in os.getenv("WSS_SUBSCRIBE_ORDER", "pending,newHeads").split(",") if s.strip()]
+WSS_SUBSCRIBE_ORDER = [s.strip().lower() for s in os.getenv("WSS_SUBSCRIBE_ORDER", "pending,newHeads").split(",") if s.strip()]
 WSS_ACCEPT_ON_PROBE = _env_bool("WSS_ACCEPT_ON_PROBE", True)
 HTTP_URL = _first_env("ALCHEMY_HTTP", "INFURA_HTTP", "CHAINSTACK_HTTP", "LAVA_HTTP")
 
@@ -494,8 +494,11 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
             if await _aw3.is_connected():
                 aw3 = _aw3
                 WSS_ACTIVE_URL = best_url
-                METRICS["wss"] = f"ON({_mask_url(best_url)})"
-                logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
+                masked = _mask_url(best_url)
+                METRICS["wss"] = f"ON({masked})"
+                METRICS["wss_endpoint"] = masked
+                METRICS["wss_ready_at"] = int(time.time())
+                logger.info("WSS connected to best endpoint: %s", masked)
                 return _aw3
         except Exception as e:
             kwargs_keys = _sorted_kwargs_keys(pk)
@@ -543,6 +546,8 @@ async def _auto_wss_initializer():
                 if WSS_READY_EVENT.is_set():
                     WSS_READY_EVENT.clear()
                 METRICS["wss"] = "OFF"
+                METRICS["wss_endpoint"] = None
+                METRICS["wss_ready_at"] = None
                 logger.warning("WebSocket appears disconnected. Attempting to reconnect...")
                 
                 if aw3 and aw3.provider:
@@ -580,7 +585,12 @@ METRICS: Dict[str, Any] = {
     "last_strategy": None, "last_dex": None, "last_cycle": None,
     "last_gross_usd": None, "last_net_usd": None, "last_tx": None,
     "last_ts": None, "wss": "OFF",
-    "last_block": None
+    "wss_endpoint": None,
+    "wss_ready_at": None,
+    "last_block": None,
+    "mempool_mode": "OFF",
+    "mempool_endpoint": None,
+    "mempool_ready_at": None,
 }
 DEBUG_DECISIONS = _env_bool("DEBUG_DECISIONS", True)
 BLACKLIST: set = set()
@@ -2777,12 +2787,24 @@ async def mempool_loop():
         logger.info("Backruns disabled; mempool loop not started.")
         return
 
+    METRICS["mempool_mode"] = "waiting"
+    METRICS["mempool_endpoint"] = None
+    METRICS["mempool_ready_at"] = None
+    last_announced_endpoint: Optional[str] = None
     while not STOP_EVENT.is_set():
         await WSS_READY_EVENT.wait()
-        
+
+        endpoint_label = _mask_url(WSS_ACTIVE_URL) if WSS_ACTIVE_URL else "HTTP fallback"
+        if endpoint_label != last_announced_endpoint:
+            logger.info("Mempool loop entering realtime mode via %s", endpoint_label)
+            last_announced_endpoint = endpoint_label
+            METRICS["mempool_mode"] = "realtime" if WSS_ACTIVE_URL else "http-fallback"
+            METRICS["mempool_endpoint"] = endpoint_label
+            METRICS["mempool_ready_at"] = int(time.time())
+
         sub = None
         if aw3 is not None and WSS_ACTIVE_URL:
-            order = [m.strip().lower() for m in (os.getenv("WSS_SUBSCRIBE_ORDER", "pending,newHeads").split(",") or []) if m.strip()]
+            order = WSS_SUBSCRIBE_ORDER or ["pending", "newheads"]
             for mode in order:
                 if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                 try:
@@ -2810,7 +2832,15 @@ async def mempool_loop():
                         except Exception: pass
         else:
             logger.warning("Mempool polling via HTTP is inefficient and not recommended. Running in degraded mode.")
+            METRICS["mempool_mode"] = "http-fallback"
+            METRICS["mempool_endpoint"] = endpoint_label
             await asyncio.sleep(30)
+
+        if not WSS_READY_EVENT.is_set():
+            last_announced_endpoint = None
+            METRICS["mempool_mode"] = "paused"
+            METRICS["mempool_endpoint"] = None
+            METRICS["mempool_ready_at"] = None
 
 # ============================ Header loop ============================
 async def block_header_loop():
@@ -2819,7 +2849,7 @@ async def block_header_loop():
         await WSS_READY_EVENT.wait()
         
         sub = None
-        if aw3 is not None and WSS_ACTIVE_URL and "newheads" not in [m.lower() for m in WSS_SUBSCRIBE_ORDER]:
+        if aw3 is not None and WSS_ACTIVE_URL and "newheads" not in WSS_SUBSCRIBE_ORDER:
             try:
                 sub = await aw3.eth.subscribe("newHeads")
                 logger.info("WSS block header listener on %s", _mask_url(WSS_ACTIVE_URL))
