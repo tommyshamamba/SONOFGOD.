@@ -354,6 +354,17 @@ def _mask_url(u: str) -> str:
     except Exception:
         return u
 
+
+def _format_kwargs_label(kwargs: Any) -> str:
+    if isinstance(kwargs, dict) and kwargs:
+        try:
+            keys = sorted(str(k) for k in kwargs.keys())
+        except Exception:
+            keys = []
+        if keys:
+            return ",".join(keys)
+    return "<default>"
+
 async def _probe_wss_latency(
     url: str, attempt_kwargs: List[Dict[str, Any]]
 ) -> Tuple[bool, float, Optional[str]]:
@@ -387,7 +398,7 @@ async def _probe_wss_latency(
                     details.append(f"close_reason={close_reason}")
                 detail_msg = ", ".join(details)
                 last_error = detail_msg
-                key_label = ",".join(sorted(pk.keys())) if pk else "<default>"
+                key_label = _format_kwargs_label(pk)
                 attempt_errors.append(f"{key_label}: {detail_msg}")
                 logger.warning(
                     "WSS probe inactive for %s with kwargs=%s: %s",
@@ -397,7 +408,7 @@ async def _probe_wss_latency(
             ok = False
             detail_msg = f"{type(e).__name__}: {e}".strip()
             last_error = detail_msg
-            key_label = ",".join(sorted(pk.keys())) if pk else "<default>"
+            key_label = _format_kwargs_label(pk)
             attempt_errors.append(f"{key_label}: {repr(e)}")
             logger.warning(
                 "WSS probe error for %s with kwargs=%s: %s",
@@ -484,10 +495,7 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
-            try:
-                kwargs_keys = list(pk.keys()) if isinstance(pk, dict) else []
-            except Exception:
-                kwargs_keys = []
+            kwargs_keys = _format_kwargs_label(pk)
             logger.error(
                 "WSS final connection attempt failed for %s with kwargs=%s: %r",
                 _mask_url(best_url), kwargs_keys, e,
