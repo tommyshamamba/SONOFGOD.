@@ -355,6 +355,15 @@ def _mask_url(u: str) -> str:
         return u
 
 
+def _format_kwargs_label(kwargs: Any) -> str:
+    if isinstance(kwargs, dict) and kwargs:
+        try:
+            keys = sorted(str(k) for k in kwargs.keys())
+        except Exception:
+            keys = []
+        if keys:
+            return ",".join(keys)
+    return "<default>"
 def _sorted_kwargs_keys(pk: Any) -> List[str]:
     if isinstance(pk, dict):
         try:
@@ -401,6 +410,7 @@ async def _probe_wss_latency(
                     details.append(f"close_reason={close_reason}")
                 detail_msg = ", ".join(details)
                 last_error = detail_msg
+                key_label = _format_kwargs_label(pk)
                 key_label = _label_kwargs(pk)
                 attempt_errors.append(f"{key_label}: {detail_msg}")
                 logger.warning(
@@ -411,6 +421,7 @@ async def _probe_wss_latency(
             ok = False
             detail_msg = f"{type(e).__name__}: {e}".strip()
             last_error = detail_msg
+            key_label = _format_kwargs_label(pk)
             key_label = _label_kwargs(pk)
             attempt_errors.append(f"{key_label}: {repr(e)}")
             logger.warning(
@@ -498,6 +509,7 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
+            kwargs_keys = _format_kwargs_label(pk)
             kwargs_keys = _sorted_kwargs_keys(pk)
             logger.error(
                 "WSS final connection attempt failed for %s with kwargs=%s: %r",
