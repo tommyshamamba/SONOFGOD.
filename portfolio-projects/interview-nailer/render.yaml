@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: interview-nailer
+    runtime: node
+    plan: free
+    region: oregon
+    autoDeployTrigger: commit
+    healthCheckPath: /health
+    buildCommand: npm run build:render
+    preDeployCommand: npm run db:init --prefix backend
+    startCommand: npm --prefix backend start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: STORAGE_MODE
+        value: postgres
+      - key: AI_MODE
+        value: mock
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: interview-nailer-db
+          property: connectionString
+
+databases:
+  - name: interview-nailer-db
+    plan: free
+    region: oregon

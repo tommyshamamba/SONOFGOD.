@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blockchain-api-config
+data:
+  redis-url: "redis://blockchain-api-redis:6379"
+  eth-rpc-url: "https://eth.llamarpc.com"
+  polygon-rpc-url: "https://polygon.llamarpc.com"
+  arbitrum-rpc-url: "https://arbitrum.llamarpc.com"
+  optimism-rpc-url: "https://optimism.llamarpc.com"

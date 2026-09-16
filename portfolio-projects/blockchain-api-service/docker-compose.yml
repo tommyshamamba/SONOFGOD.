@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - REDIS_URL=redis://redis:6379
+      - ETH_RPC_URL=https://eth.llamarpc.com
+      - POLYGON_RPC_URL=https://polygon.llamarpc.com
+      - ARBITRUM_RPC_URL=https://arbitrum.llamarpc.com
+      - OPTIMISM_RPC_URL=https://optimism.llamarpc.com
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

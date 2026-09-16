@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blockchain-api-backend
+  labels:
+    app: blockchain-api
+    component: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: blockchain-api
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: blockchain-api
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: blockchain-api-backend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-api-secrets
+              key: jwt-secret
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-api-config
+              key: redis-url
+        - name: ETH_RPC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-api-config
+              key: eth-rpc-url
+        - name: POLYGON_RPC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-api-config
+              key: polygon-rpc-url
+        - name: ARBITRUM_RPC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-api-config
+              key: arbitrum-rpc-url
+        - name: OPTIMISM_RPC_URL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-api-config
+              key: optimism-rpc-url
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10

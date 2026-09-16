@@ -1,0 +1,41 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Project Configuration
+project_name  = "blockchain-api"
+cluster_name  = "blockchain-api-cluster"
+
+# Kubernetes Configuration
+kubernetes_version = "1.28"
+
+# Network Configuration
+vpc_cidr              = "10.0.0.0/16"
+availability_zones    = ["us-east-1a", "us-east-1b", "us-east-1c"]
+private_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs   = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+# Node Group Configuration
+instance_types           = ["t3.medium"]
+node_group_min_size      = 2
+node_group_max_size      = 5
+node_group_desired_size  = 2
+
+# Redis Configuration
+redis_node_type = "cache.t3.micro"
+redis_num_nodes = 1
+
+# Database Configuration
+create_database              = true
+database_instance_class     = "db.t3.micro"
+database_allocated_storage   = 20
+database_max_allocated_storage = 100
+database_name               = "blockchain_api"
+database_username           = "admin"
+database_password           = "ChangeThisPassword123!"
+
+# SSL Certificate (leave empty if using HTTP only)
+acm_certificate_arn = ""
+
+# Logging
+log_retention_days = 7
