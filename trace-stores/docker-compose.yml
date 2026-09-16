@@ -1,0 +1,16 @@
+services:
+  trace-api:
+    build: ./services/trace-api
+    ports: ["8000:8000"]
+    environment:
+      CORS_ORIGINS: http://localhost:3000
+  storefront:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./apps/storefront:/app
+    command: sh -c "npm install && npm run dev"
+    ports: ["3000:3000"]
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on: [trace-api]
