@@ -1,0 +1,28 @@
+{
+  "name": "pesa-fams-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prototype and PostgreSQL-backed MVP foundation for the Bank DRC Fixed Asset Management System",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-isolation=none",
+    "db:preflight": "node scripts/db-preflight.js",
+    "db:up": "node scripts/db-up.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "db:reset-demo": "node scripts/seed.js",
+    "db:smoke": "node scripts/db-smoke.js",
+    "jobs:worker": "node scripts/worker.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "zod": "^4.0.0"
+  }
+}

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PESA FAMS Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="login-shell" id="loginView">
+      <section class="login-brand">
+        <div class="eyebrow">PESA Consulting Group</div>
+        <h1>Bank DRC Fixed Asset Management System</h1>
+        <p>Prototype focused on the deal-winning story: audit closure, automated depreciation, GL posting, branch verification, and role-based control.</p>
+        <div class="value-grid">
+          <article class="value-card"><span>5,600</span><p>Assets migrated into a central register</p></article>
+          <article class="value-card"><span>37</span><p>Locations across DRC and Head Office</p></article>
+          <article class="value-card"><span>0</span><p>Target reconciliation discrepancies after go-live</p></article>
+        </div>
+      </section>
+
+      <section class="login-card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Interactive Demo Access</div>
+            <h2>Sign in to the prototype</h2>
+          </div>
+        </div>
+        <form id="loginForm" class="stack">
+          <label class="field"><span>Email</span><input id="emailInput" type="email" value="finance@bankdrc.cd" /></label>
+          <label class="field"><span>Password</span><input id="passwordInput" type="password" value="Finance123!" /></label>
+          <button class="primary-button" type="submit">Enter Prototype</button>
+          <p class="helper-text">Use IT Admin to prepare depreciation, Finance Admin to approve and post, or Auditor to show strict read-only access.</p>
+        </form>
+        <div id="demoCredentials" class="demo-credentials"></div>
+        <p id="loginError" class="error-text hidden"></p>
+      </section>
+    </div>
+
+    <div class="app-shell hidden" id="appView">
+      <aside class="sidebar">
+        <div>
+          <div class="eyebrow">Bank DRC</div>
+          <h2>PESA FAMS</h2>
+          <p class="sidebar-copy">Prototype-first asset, depreciation, and reconciliation platform.</p>
+        </div>
+        <nav class="nav-stack" id="navStack">
+          <button class="nav-button active" data-section="dashboard">Dashboard</button>
+          <button class="nav-button" data-section="assets">Assets</button>
+          <button class="nav-button" data-section="lifecycle">Lifecycle</button>
+          <button class="nav-button" data-section="depreciation">Depreciation</button>
+          <button class="nav-button" data-section="approvals">Approvals</button>
+          <button class="nav-button" data-section="reconciliation">Reconciliation</button>
+          <button class="nav-button" data-section="reports">Reports</button>
+          <button class="nav-button" data-section="audit">Audit Trail</button>
+          <button class="nav-button" data-section="verification">Verification</button>
+          <button class="nav-button" data-section="admin">Admin</button>
+        </nav>
+        <div id="userPanel" class="user-panel"></div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">Prototype Mode</div>
+            <h1 id="pageTitle">Executive Dashboard</h1>
+          </div>
+          <div class="topbar-right">
+            <div id="branchPill" class="topbar-pill"></div>
+            <div id="rolePill" class="topbar-pill"></div>
+          </div>
+        </header>
+
+        <section class="panel-section active" id="section-dashboard">
+          <div id="kpiGrid" class="kpi-grid"></div>
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Operational Exceptions</div><h3>What needs attention now</h3></div></div>
+            <div id="dashboardAlerts" class="summary-grid"></div>
+          </article>
+          <div class="two-column">
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Monthly Engine</div><h3>Depreciation trend</h3></div></div><div id="depreciationTrend" class="bar-chart"></div></article>
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Status Mix</div><h3>Asset lifecycle distribution</h3></div></div><div class="status-ring-wrap"><div id="statusRing" class="status-ring"></div><div id="statusLegend" class="status-legend"></div></div></article>
+          </div>
+          <div class="two-column">
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Recent Activity</div><h3>Last actions captured in the audit trail</h3></div></div><div id="activityFeed" class="activity-feed"></div></article>
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Branch Coverage</div><h3>Top branch summary</h3></div></div><div class="table-wrap"><table><thead><tr><th>Branch</th><th>Assets</th><th>Pending</th><th>Verification</th></tr></thead><tbody id="branchTable"></tbody></table></div></article>
+          </div>
+          <div class="two-column">
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Verification Focus</div><h3>Oldest branch assets waiting for count</h3></div></div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Branch</th><th>Last Verified</th><th>Status</th></tr></thead><tbody id="dashboardVerificationQueue"></tbody></table></div></article>
+            <article class="surface-card"><div class="card-head"><div><div class="eyebrow">Import Activity</div><h3>Latest onboarding batches</h3></div></div><div class="table-wrap"><table><thead><tr><th>Batch</th><th>Status</th><th>Created By</th><th>Summary</th></tr></thead><tbody id="dashboardImportTable"></tbody></table></div></article>
+          </div>
+        </section>
+
+        <section class="panel-section" id="section-assets">
+          <div class="two-column">
+            <article class="surface-card">
+              <div class="card-head"><div><div class="eyebrow">Asset Onboarding</div><h3>Create or edit an asset</h3></div><button id="assetFormResetButton" class="ghost-button">New Asset</button></div>
+              <form id="assetForm" class="stack">
+                <div class="filter-grid">
+                  <label class="field"><span>Asset ID</span><input id="assetFormAssetId" type="text" placeholder="PESA-FA-000001" /></label>
+                  <label class="field"><span>Tag Code</span><input id="assetFormTagCode" type="text" placeholder="TAG-000001" /></label>
+                  <label class="field"><span>Name</span><input id="assetFormName" type="text" placeholder="Dell OptiPlex Workstation" /></label>
+                  <label class="field"><span>Category</span><select id="assetFormCategory"></select></label>
+                  <label class="field"><span>Branch</span><select id="assetFormBranch"></select></label>
+                  <label class="field"><span>Currency</span><select id="assetFormCurrency"><option value="USD">USD</option><option value="CDF">CDF</option></select></label>
+                  <label class="field"><span>Acquisition Cost</span><input id="assetFormCost" type="number" min="0" step="0.01" /></label>
+                  <label class="field"><span>Residual Value</span><input id="assetFormResidual" type="number" min="0" step="0.01" placeholder="Auto if blank" /></label>
+                  <label class="field"><span>Capitalisation Date</span><input id="assetFormCapitalisationDate" type="date" /></label>
+                  <label class="field"><span>Useful Life (Months)</span><input id="assetFormUsefulLife" type="number" min="0" step="1" /></label>
+                  <label class="field"><span>Method</span><select id="assetFormMethod"><option value="SLM">SLM</option><option value="WDV">WDV</option><option value="NONE">NONE</option></select></label>
+                  <label class="field"><span>Status</span><select id="assetFormStatus"></select></label>
+                </div>
+                <label class="field"><span>Description</span><textarea id="assetFormDescription" rows="3" placeholder="Asset description, serial number, deployment note..."></textarea></label>
+                <div class="filter-grid compact">
+                  <label class="field"><span>Purchase Order Ref</span><input id="assetFormPurchaseOrderRef" type="text" placeholder="PO-2026-00118" /></label>
+                  <label class="field"><span>Warranty Expiry</span><input id="assetFormWarrantyExpiryDate" type="date" /></label>
+                </div>
+                <div class="action-row compact-actions">
+                  <div id="assetFormMode" class="inline-note">Create mode</div>
+                  <button id="assetFormSubmitButton" class="secondary-button" type="submit">Save Asset</button>
+                </div>
+              </form>
+            </article>
+            <article class="surface-card">
+              <div class="card-head"><div><div class="eyebrow">Bulk Import</div><h3>Paste CSV exported from Excel</h3></div><button id="importPreviewButton" class="secondary-button">Preview</button></div>
+              <label class="field"><span>CSV content</span><textarea id="importCsvInput" rows="12" placeholder="asset_id,tag_code,name,category_key,branch_code,currency,acquisition_cost,capitalisation_date&#10;PESA-FA-000001,TAG-000001,Dell OptiPlex Workstation,COMPUTER_EQUIPMENT,BR-GOM,USD,1600,2026-01-15"></textarea></label>
+              <div class="action-row compact-actions">
+                <div id="importSummaryNote" class="inline-note">Run a preview before importing.</div>
+                <button id="importCommitButton" class="ghost-button" type="button">Commit Valid Rows</button>
+              </div>
+              <div class="table-wrap compact-table"><table><thead><tr><th>Row</th><th>Asset</th><th>Tag</th><th>Status</th><th>Message</th></tr></thead><tbody id="importPreviewTable"><tr><td colspan="5">No preview run yet.</td></tr></tbody></table></div>
+              <div class="table-wrap compact-table"><table><thead><tr><th>Batch</th><th>Status</th><th>By</th><th>Summary</th></tr></thead><tbody id="importHistoryTable"><tr><td colspan="4">No import batches available yet.</td></tr></tbody></table></div>
+            </article>
+          </div>
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Central Register</div><h3>Asset registry</h3></div><span id="assetScopeNote" class="scope-note"></span></div>
+            <div class="filter-grid">
+              <label class="field"><span>Search</span><input id="assetSearch" type="text" placeholder="Asset ID, tag, name, branch..." /></label>
+              <label class="field"><span>Status</span><select id="assetStatusFilter"></select></label>
+              <label class="field"><span>Branch</span><select id="assetBranchFilter"></select></label>
+              <label class="field"><span>Category</span><select id="assetCategoryFilter"></select></label>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>Asset ID</th><th>Tag</th><th>Name</th><th>Category</th><th>Branch</th><th>Currency</th><th>Cost</th><th>NBV</th><th>Status</th></tr></thead><tbody id="assetTable"></tbody></table></div>
+            <div class="pagination-bar"><button id="assetPrev" class="ghost-button">Previous</button><span id="assetPaginationLabel"></span><button id="assetNext" class="ghost-button">Next</button></div>
+          </article>
+        </section>
+
+        <section class="panel-section" id="section-lifecycle"><div id="kanbanBoard" class="kanban-grid"></div></section>
+
+        <section class="panel-section" id="section-depreciation">
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Finance Control</div><h3>Monthly depreciation engine</h3></div></div>
+            <div id="depreciationPanel" class="approval-panel"></div>
+            <div class="action-row">
+              <button id="runDepreciationButton" class="primary-button">Run Depreciation</button>
+              <button id="approveDepreciationButton" class="secondary-button">Approve &amp; Post to GL</button>
+              <button id="retryFailuresButton" class="ghost-button">Retry Failed Lines</button>
+            </div>
+          </article>
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Posting Exceptions</div><h3>Failed depreciation lines</h3></div></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Asset</th>
+                    <th>Branch</th>
+                    <th>Charge</th>
+                    <th>Status</th>
+                    <th>Retry Count</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="depreciationExceptions"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="surface-card"><div class="card-head"><div><div class="eyebrow">History</div><h3>Previous depreciation runs</h3></div></div><div class="table-wrap"><table><thead><tr><th>Period</th><th>Status</th><th>Assets</th><th>USD</th><th>CDF</th><th>Failures</th></tr></thead><tbody id="depreciationHistory"></tbody></table></div></article>
+        </section>
+
+        <section class="panel-section" id="section-approvals">
+          <article class="surface-card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow">Maker Checker Control</div>
+                <h3>Pending approvals</h3>
+              </div>
+              <div id="approvalSummary" class="topbar-pill"></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Action</th>
+                    <th>Requested By</th>
+                    <th>Branch</th>
+                    <th>Status</th>
+                    <th>Requested</th>
+                    <th>Decision</th>
+                  </tr>
+                </thead>
+                <tbody id="approvalTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel-section" id="section-reconciliation">
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Audit Observation Closure</div><h3>GL reconciliation</h3></div><button id="runReconciliationButton" class="secondary-button">Refresh Reconciliation</button></div>
+            <div id="reconciliationSummary" class="recon-summary"></div>
+            <div class="table-wrap"><table><thead><tr><th>GL Code</th><th>Label</th><th>Variance USD</th><th>Variance CDF</th><th>Status</th></tr></thead><tbody id="reconciliationTable"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="panel-section" id="section-reports">
+          <div id="reportGrid" class="report-grid"></div>
+          <article id="reportPreviewCard" class="surface-card hidden">
+            <div class="card-head"><div><div class="eyebrow">Preview</div><h3 id="reportPreviewTitle">Generated report</h3></div><div id="reportActionRow" class="action-row compact-actions"></div></div>
+            <div id="reportSummaryGrid" class="summary-grid"></div>
+            <div class="table-wrap"><table><thead id="reportPreviewHead"></thead><tbody id="reportPreviewBody"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="panel-section" id="section-audit">
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Immutable History</div><h3>Audit trail</h3></div></div>
+            <div class="filter-grid compact">
+              <label class="field"><span>User</span><input id="auditUserFilter" type="text" placeholder="Filter by user name" /></label>
+              <label class="field"><span>Action</span><select id="auditActionFilter"><option value="">All actions</option></select></label>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>Detail</th></tr></thead><tbody id="auditTable"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="panel-section" id="section-verification">
+          <div class="verification-shell">
+            <article class="verification-card">
+              <div class="mobile-banner">Mobile / offline-friendly branch verification flow</div>
+              <div class="scanner-placeholder"><video id="verificationVideo" class="verification-video hidden" autoplay muted playsinline></video><div class="scanner-frame"></div><p id="scannerPlaceholderText">Camera scanner placeholder</p></div>
+              <div class="action-row compact-actions">
+                <button id="startScannerButton" class="ghost-button" type="button">Start Camera Scan</button>
+                <button id="stopScannerButton" class="ghost-button" type="button">Stop Camera</button>
+              </div>
+              <label class="field"><span>Or enter tag code manually</span><input id="verificationTagInput" type="text" placeholder="TAG-00002" /></label>
+              <button id="verificationLookupButton" class="secondary-button full-width">Find Asset</button>
+              <div id="verificationResult" class="hidden"></div>
+              <label id="verificationNotesField" class="field hidden"><span>Notes</span><textarea id="verificationNotes" rows="3" placeholder="Optional branch notes..."></textarea></label>
+              <div id="verificationActions" class="stack hidden">
+                <button class="status-action success" data-verification="CONFIRMED">Asset Confirmed</button>
+                <button class="status-action danger" data-verification="NOT_FOUND">Asset Not Found</button>
+                <button class="status-action warning" data-verification="CONDITION_ISSUE">Condition Issue</button>
+              </div>
+              <div class="table-wrap compact-table"><table><thead><tr><th>Tag</th><th>Branch</th><th>Last Verified</th><th>Status</th></tr></thead><tbody id="verificationQueueTable"><tr><td colspan="4">Verification queue is loading.</td></tr></tbody></table></div>
+              <div class="card-head"><div><div class="eyebrow">Offline Queue</div><h3>Captured while disconnected</h3></div><button id="syncOfflineQueueButton" class="secondary-button" type="button">Sync Offline Queue</button></div>
+              <div class="table-wrap compact-table"><table><thead><tr><th>Tag</th><th>Outcome</th><th>Captured</th><th>Notes</th></tr></thead><tbody id="offlineQueueTable"><tr><td colspan="4">Offline queue is empty.</td></tr></tbody></table></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel-section" id="section-admin">
+          <div class="two-column">
+            <article class="surface-card">
+              <div class="card-head"><div><div class="eyebrow">User Administration</div><h3>Roles and branch access</h3></div><button id="adminUserFormResetButton" class="ghost-button">New User</button></div>
+              <form id="adminUserForm" class="stack">
+                <div class="filter-grid">
+                  <label class="field"><span>Email</span><input id="adminUserEmail" type="email" placeholder="new.user@bankdrc.cd" /></label>
+                  <label class="field"><span>Name</span><input id="adminUserName" type="text" placeholder="User full name" /></label>
+                  <label class="field"><span>Role</span><select id="adminUserRole"></select></label>
+                  <label class="field"><span>Home Branch</span><select id="adminUserHomeBranch"></select></label>
+                  <label class="field"><span>Branch Access</span><select id="adminUserBranchAccess" multiple size="5"></select></label>
+                  <label class="field"><span>Phone Number</span><input id="adminUserPhoneNumber" type="text" placeholder="+243 ..." /></label>
+                  <label class="field"><span>New Password</span><input id="adminUserPassword" type="password" placeholder="Required for new users" /></label>
+                  <label class="field"><span>Status</span><select id="adminUserActive"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+                </div>
+                <div class="action-row compact-actions">
+                  <div id="adminUserFormMode" class="inline-note">Create mode</div>
+                  <button class="secondary-button" type="submit">Save User</button>
+                </div>
+              </form>
+            </article>
+            <article class="surface-card">
+              <div class="card-head"><div><div class="eyebrow">Account Security</div><h3>Change your password</h3></div></div>
+              <form id="passwordForm" class="stack">
+                <label class="field"><span>Current Password</span><input id="currentPasswordInput" type="password" /></label>
+                <label class="field"><span>New Password</span><input id="newPasswordInput" type="password" /></label>
+                <button class="secondary-button" type="submit">Change Password</button>
+              </form>
+              <p class="helper-text">JWT session expiry is still enforced. This updates the stored password hash and audit trail.</p>
+            </article>
+          </div>
+          <article class="surface-card">
+            <div class="card-head"><div><div class="eyebrow">Access Matrix</div><h3>Current users</h3></div></div>
+            <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Home Branch</th><th>Access</th><th>Last Login</th><th>Status</th></tr></thead><tbody id="adminUserTable"><tr><td colspan="6">User directory is loading.</td></tr></tbody></table></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div id="assetModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="card-head"><div><div class="eyebrow">Asset Detail</div><h3 id="assetModalTitle"></h3></div><button id="closeAssetModal" class="ghost-button">Close</button></div>
+        <div class="asset-modal-grid">
+          <div><div class="qr-label"><div class="qr-top">BANK DRC | PESA FAMS</div><div id="qrTag" class="qr-tag"></div><div id="qrName" class="qr-name"></div><div id="qrBranch" class="qr-branch"></div><div id="pseudoQr" class="pseudo-qr"></div><div id="qrFooter" class="qr-footer"></div></div></div>
+          <div>
+            <div id="assetOverview" class="detail-grid"></div>
+            <div class="two-column modal-columns">
+              <article>
+                <div class="card-head compact-head"><div><div class="eyebrow">Depreciation</div><h4>Schedule</h4></div></div>
+                <div class="table-wrap compact-table"><table><thead><tr><th>Period</th><th>Opening NBV</th><th>Charge</th><th>Closing NBV</th></tr></thead><tbody id="assetSchedule"></tbody></table></div>
+              </article>
+              <article>
+                <div class="card-head compact-head"><div><div class="eyebrow">Attachments</div><h4>Supporting evidence</h4></div></div>
+                <form id="assetAttachmentForm" class="stack compact-stack">
+                  <div class="filter-grid compact">
+                    <label class="field"><span>Type</span><select id="assetAttachmentType"></select></label>
+                    <label class="field"><span>Label</span><input id="assetAttachmentFileName" type="text" placeholder="Invoice 2026-001" /></label>
+                  </div>
+                  <label class="field"><span>Reference URL or path</span><input id="assetAttachmentReferenceUrl" type="text" placeholder="https://... or internal document ref" /></label>
+                  <label class="field"><span>Note</span><textarea id="assetAttachmentNote" rows="2" placeholder="Optional context"></textarea></label>
+                  <button class="ghost-button" type="submit">Add Attachment</button>
+                </form>
+                <div class="table-wrap compact-table"><table><thead><tr><th>Type</th><th>Label</th><th>By</th></tr></thead><tbody id="assetAttachmentTable"><tr><td colspan="3">No attachments yet.</td></tr></tbody></table></div>
+              </article>
+            </div>
+            <article class="surface-card slim-card">
+              <div class="card-head compact-head"><div><div class="eyebrow">Lifecycle Requests</div><h4>Raise transfer, disposal, or impairment</h4></div></div>
+              <form id="assetWorkflowForm" class="stack compact-stack">
+                <div class="filter-grid compact">
+                  <label class="field"><span>Workflow Type</span><select id="assetWorkflowType"><option value="TRANSFER">Transfer</option><option value="DISPOSAL">Disposal</option><option value="IMPAIRMENT">Impairment</option></select></label>
+                  <label class="field"><span>To Branch (Transfer only)</span><select id="assetWorkflowBranch"></select></label>
+                </div>
+                <label class="field"><span>Notes</span><textarea id="assetWorkflowNotes" rows="2" placeholder="Reason, destination owner, expected movement date..."></textarea></label>
+                <button class="secondary-button" type="submit">Raise Request</button>
+              </form>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toastStack" class="toast-stack"></div>
+    <script src="/app-expanded.js" defer></script>
+  </body>
+</html>

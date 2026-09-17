@@ -1,9 +1,10 @@
 # Project collection
 
-Source snapshots of five local projects. These are portfolio and development projects; this import does not certify production readiness, deployment, benchmarks or commercial results. Existing repository projects remain in their original locations.
+Source snapshots of six local projects. These are portfolio and development projects; this import does not certify production readiness, deployment, benchmarks or commercial results. Existing repository projects remain in their original locations.
 
 | Project | Contents |
 |---|---|
+| [PESA FAMS banking prototype](pesa-fams-banking-prototype/) | Fixed-asset management demo and PostgreSQL-backed source. |
 | [Interview Nailer](interview-nailer/) | Interview-preparation application with frontend and backend source. |
 | [Voice AI Missed-Call](voice-ai-missed-call/) | Starter scripts, prompts and integration guides; provider setup is required. |
 | [Blockchain API Service](blockchain-api-service/) | API, frontend and infrastructure source. |
