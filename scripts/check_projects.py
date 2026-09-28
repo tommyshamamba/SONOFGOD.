@@ -7,12 +7,20 @@ Does not start services, execute bots or contact external systems.
 from pathlib import Path
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {"node_modules", ".git", ".next", "build", "dist", ".venv", "__pycache__"}
+
+
+def source_files(base):
+    for directory, folders, files in os.walk(base):
+        folders[:] = sorted(name for name in folders if name not in SKIP and not name.startswith(("pytest-cache-files-", ".pytest_cache")))
+        for name in sorted(files):
+            yield Path(directory) / name
 
 
 def main():
@@ -24,7 +32,7 @@ def main():
     errors = []
     counts = {"json": 0, "python": 0, "javascript": 0}
     for base in [ROOT / "portfolio-projects", ROOT / "trace-stores"]:
-        for path in sorted(base.rglob("*")):
+        for path in source_files(base):
             rel = path.relative_to(ROOT)
             if not path.is_file() or any(part in SKIP for part in rel.parts):
                 continue

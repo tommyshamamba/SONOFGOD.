@@ -8,16 +8,21 @@ from __future__ import annotations
 
 import io
 import os
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from threading import Lock
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from PIL import Image, ImageOps
+from starlette.concurrency import run_in_threadpool
+from .inference import U2Net
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_PIXELS = 16_000_000
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -25,20 +30,41 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 class Runtime:
     model_loaded: bool = False
     model_name: str = "development alpha-mask fallback"
+    model: U2Net | None = None
+    required: bool = False
+    error: str | None = None
 
 
 runtime = Runtime()
+inference_lock = Lock()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    runtime.model = None
+    runtime.model_loaded = False
+    runtime.model_name = "development alpha-mask fallback"
+    runtime.error = None
+    runtime.required = os.getenv("REQUIRE_MODEL", "false").lower() == "true"
     model_path = os.getenv("MODEL_PATH", "/models/u2net.onnx")
     if os.path.exists(model_path):
-        # Model loading belongs here to make startup readiness explicit. The ONNX
-        # inference adapter can be added without changing API contracts.
-        runtime.model_loaded = True
-        runtime.model_name = os.path.basename(model_path)
-    yield
+        try:
+            runtime.model = await run_in_threadpool(U2Net, model_path)
+            runtime.model_loaded = True
+            runtime.model_name = runtime.model.name
+        except Exception:
+            runtime.error = "Model failed validation; inspect server logs."
+            logger.exception("ONNX model initialization failed")
+    else:
+        runtime.error = "Model file not found."
+    if runtime.required and not runtime.model_loaded:
+        raise RuntimeError(runtime.error)
+    try:
+        yield
+    finally:
+        runtime.model = None
+        runtime.model_loaded = False
 
 
 app = FastAPI(title="Trace API", version="0.1.0", lifespan=lifespan)
@@ -52,34 +78,55 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    return {"status": "ok", "model_loaded": runtime.model_loaded, "model": runtime.model_name}
+    return {"status": "ok", "model_loaded": runtime.model_loaded, "model": runtime.model_name,
+            "mode": "onnx" if runtime.model_loaded else "fallback", "model_error": runtime.error}
+
+
+@app.get("/ready")
+def ready() -> dict[str, object]:
+    if runtime.required and not runtime.model_loaded:
+        raise HTTPException(status_code=503, detail="Model unavailable")
+    return health()
 
 
 @app.post("/v1/remove-background")
 async def remove_background(image: UploadFile = File(...)) -> Response:
     if image.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="Upload a PNG, JPEG, or WebP image.")
-    payload = await image.read()
+    payload = await image.read(MAX_UPLOAD_BYTES + 1)
     if not payload or len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Image must be between 1 byte and 10 MB.")
     try:
-        source = ImageOps.exif_transpose(Image.open(io.BytesIO(payload))).convert("RGBA")
+        opened = Image.open(io.BytesIO(payload))
+        if opened.width * opened.height > MAX_IMAGE_PIXELS:
+            raise HTTPException(status_code=413, detail="Image exceeds 16 megapixels.")
+        source = ImageOps.exif_transpose(opened).convert("RGBA")
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail="The uploaded file is not a valid image.") from exc
 
-    # Safe development fallback: near-white pixels become transparent. A production
-    # U²-Net adapter replaces this mask while preserving this output contract.
-    pixels = np.asarray(source).copy()
-    rgb = pixels[:, :, :3].astype(np.int16)
-    distance_from_white = 255 - rgb.min(axis=2)
-    alpha = np.clip(distance_from_white * 7, 0, 255).astype(np.uint8)
-    pixels[:, :, 3] = np.minimum(pixels[:, :, 3], alpha)
-    result = Image.fromarray(pixels, "RGBA")
+    try:
+        result = await run_in_threadpool(process_image, source)
+    except Exception as exc:
+        logger.exception("Image inference failed")
+        raise HTTPException(status_code=503, detail="Image processing failed; retry later.") from exc
 
     output = io.BytesIO()
     result.save(output, format="PNG", optimize=True)
-    return Response(
-        content=output.getvalue(),
-        media_type="image/png",
-        headers={"X-Trace-Processor": runtime.model_name},
-    )
+    return Response(content=output.getvalue(), media_type="image/png",
+                    headers={"X-Trace-Processor": runtime.model_name})
+
+
+def process_image(source: Image.Image) -> Image.Image:
+    pixels = np.asarray(source).copy()
+    if runtime.model is not None:
+        with inference_lock:
+            alpha = np.asarray(runtime.model.mask(source))
+    else:
+        if runtime.required:
+            raise RuntimeError("Required model is unavailable")
+        rgb = pixels[:, :, :3].astype(np.int16)
+        alpha = np.clip((255 - rgb.min(axis=2)) * 7, 0, 255).astype(np.uint8)
+    pixels[:, :, 3] = np.minimum(pixels[:, :, 3], alpha)
+    return Image.fromarray(pixels, "RGBA")

@@ -1,38 +1,38 @@
-# Repository organization review
+# Implementation and verification report
 
-Reviewed September 28, 2026. This is an organization and baseline validation pass, not a production certification.
+Reviewed September 28, 2026. These results verify specific working paths, not production certification.
 
-## Changes
+## Implemented
 
-- Added a root project catalog, contribution workflow and reproducible source checker.
-- Replaced the nested Trace and Stores workflow with a root GitHub Actions workflow. Added source validation and banking tests alongside the existing API health test and storefront build jobs.
-- Corrected Interview Nailer's machine-specific setup path and hosting link; removed unverified free-hosting promises.
-- Added dependency installation and explicit local prototype mode to the banking quick start.
-- Replaced unsupported production-ready wording in the blockchain README.
-- Clarified the Trace API's actual implementation: near-white-pixel alpha masking, without an ONNX inference adapter.
+- Trace CPU ONNX inference with tensor validation, startup warmup, required-model startup enforcement, preserved alpha and explicit error/fallback reporting.
+- Checksum-verified U2NetP download and read-only Compose model mount; weights excluded from Git.
+- PostgreSQL integration tests for migrations/seed data, authentication and reads, auditor permissions and transaction rollback.
+- CI jobs for PostgreSQL integration, ONNX tests and all four frontends; frontend lockfiles and restricted-Windows Next build option.
 
 ## Local results
 
 | Check | Result |
 |---|---|
-| Manifest parsing | 11 JSON manifests parsed |
-| Python source compilation | 4 files passed syntax checks |
-| JavaScript source syntax | 53 non-JSX JavaScript files passed Node syntax checks |
-| PESA FAMS tests | 22 passed, 0 failed using locally available dependencies |
-| Trace API pytest | Could not start: pytest is absent from the bundled Python runtime |
-| Frontend builds | Not run locally in this pass |
-| GitHub Actions | Configuration prepared; a successful hosted run is not yet verified |
+| Interview Nailer frontend | Production build passed |
+| Blockchain API frontend | Production build passed |
+| Kubernetes Demo frontend | Production build passed |
+| Trace storefront | Next.js 14.2.35 production build passed using thread-based build mode |
+| Banking database | Three migrations and demo seed succeeded on isolated PostgreSQL 18.4 |
+| Banking tests | 26 passed: 22 existing and four real database checks |
+| Trace API | 8 passed, including pretrained U2NetP end-to-end smoke test; one upstream deprecation warning |
+| Source checks | 14 JSON manifests, 7 Python files and 54 JavaScript files passed |
+| GitHub Actions | Configuration updated; hosted run not yet verified |
 
-The source checker intentionally excludes JSX/TypeScript build validation and does not execute application code. Banking tests include mocked database health; they do not establish a working PostgreSQL deployment.
+Local banking tests used available dependencies through NODE_PATH. Python test wheels were downloaded from PyPI, checked against published SHA256 hashes and extracted into an isolated directory because pip temporary-directory permissions failed on this Windows host. Normal pip/npm installation is used in CI. The test database contained synthetic seed data only.
 
-## Findings that still need engineering work
+## Remaining production work
 
-1. Trace API sets `model_loaded` when a model file exists but does not load or execute that model. Fix runtime reporting and add an actual adapter before claiming ONNX inference.
-2. Interview Nailer has mock AI by default and no behavioral test script. Verify authentication, storage isolation and real provider mode independently.
-3. Database-backed banking workflows need integration testing against a disposable PostgreSQL instance and a separate security review.
-4. Frontends need clean dependency installations and build checks. Do not infer successful builds from source syntax checks.
-5. Infrastructure examples need validation in an isolated environment before cloud provisioning; no Terraform apply was run.
-6. Voice AI remains a starter/integration project. Provider accounts and a tested end-to-end call flow are needed.
-7. Root Python trading files and Solidity contracts were not executed or audited. No trading, transactions or paid services were started.
+- Test every database write workflow, concurrent approvals, backups and recovery.
+- Review dependency advisories, authentication, rate limits and deployment settings. Legacy Create React App packages emitted deprecation warnings.
+- Benchmark segmentation quality with representative artwork; successful inference does not establish visual quality for all images.
+- Trace storefront still needs durable orders, storage and payments.
+- Interview Nailer uses mock AI by default; real provider behavior and storage isolation need separate tests.
+- Cloud/Kubernetes/Terraform deployment and end-to-end voice-provider calls remain unverified. No paid infrastructure was provisioned.
+- Root trading scripts and Solidity contracts were not run or audited.
 
-Existing file paths were preserved so published links continue to work. No employment claims, performance measurements or production deployment claims were added.
+No employment, commercial deployment or performance claims were added.

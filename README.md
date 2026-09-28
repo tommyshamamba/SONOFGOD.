@@ -16,7 +16,7 @@ This repository contains multiple projects in folders. They will not appear as s
 | Voice AI Missed-Call | [Starter scripts, prompts and integration guides](portfolio-projects/voice-ai-missed-call/) |
 | Trace and Stores | [Existing project and setup instructions](trace-stores/) |
 
-See the [portfolio collection notes](portfolio-projects/README.md) for import details. These are development projects and prototypes; inclusion here does not certify production readiness, commercial deployment or performance results. The banking prototype's 22 existing tests passed during import; a live PostgreSQL deployment was not tested.
+See the [portfolio collection notes](portfolio-projects/README.md) for import details. These are development projects and prototypes; inclusion here does not certify production readiness, commercial deployment or performance results. All four frontend production builds passed locally. Banking now has real PostgreSQL integration tests, and Trace implements ONNX inference. See the [verification report](docs/REVIEW_REPORT.md) for results and limits.
 
 ## Other existing source
 

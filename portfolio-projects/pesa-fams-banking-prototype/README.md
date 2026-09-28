@@ -133,3 +133,19 @@ node --test --test-isolation=none
 - Each report now supports preview, CSV, Excel-friendly XML, and print-ready HTML.
 - The print-ready HTML export is intended for browser print-to-PDF workflows.
 - If you are already running the server, restart it before testing the new report endpoints and UI buttons.
+
+
+## PostgreSQL integration verification
+
+Use a disposable database named `pesa_test_integration` (never a customer database).
+Set `DATABASE_URL` to its PostgreSQL connection URL and `APP_MODE=database`.
+Run `npm run db:migrate` and `npm run db:seed`, then set `TEST_DATABASE_URL`
+to the same URL and run `npm test`. The integration suite requires a
+`pesa_test_` database name and uses synthetic seed credentials. Without
+`TEST_DATABASE_URL`, those integration cases are skipped. GitHub Actions creates
+and seeds an isolated PostgreSQL service automatically. The seed command is for
+disposable demo/test databases only.
+
+The local validation passed 26 tests, including four real database cases.
+This covers database reads, access control and transaction rollback; it does not
+validate every financial write workflow, concurrency or production operations.

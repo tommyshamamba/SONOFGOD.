@@ -4,6 +4,10 @@ services:
     ports: ["8000:8000"]
     environment:
       CORS_ORIGINS: http://localhost:3000
+      MODEL_PATH: /models/u2netp.onnx
+      REQUIRE_MODEL: ${REQUIRE_MODEL:-false}
+    volumes:
+      - ./models:/models:ro
   storefront:
     image: node:20-alpine
     working_dir: /app

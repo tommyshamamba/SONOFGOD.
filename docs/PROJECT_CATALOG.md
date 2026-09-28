@@ -4,7 +4,7 @@ All paths below are relative to the repository root. These projects are folders 
 
 | Project | Location | Implementation and limits |
 |---|---|---|
-| PESA FAMS | [Banking prototype](../portfolio-projects/pesa-fams-banking-prototype/) | Node/Express fixed-asset demo and PostgreSQL implementation path; generated demo records, approvals, depreciation and reporting. Live database deployment remains unverified. |
+| PESA FAMS | [Banking prototype](../portfolio-projects/pesa-fams-banking-prototype/) | Node/Express fixed-asset demo and PostgreSQL implementation path; generated demo records, approvals, depreciation and reporting. Integration tests passed against isolated PostgreSQL; production hosting remains unverified. |
 | Interview Nailer | [Interview application](../portfolio-projects/interview-nailer/) | React frontend and Express backend. File storage and mock AI support a local demo; mock responses are not live model inference. |
 | Blockchain API Service | [Blockchain application](../portfolio-projects/blockchain-api-service/) | Node API, React frontend and infrastructure examples. Provider credentials and services are needed; not production-certified. |
 | Kubernetes Demo | [Container demo](../portfolio-projects/kubernetes-demo/) | Frontend/backend example, Docker Compose, Kubernetes manifests and Terraform. Cluster/cloud deployment not verified in this review. |
@@ -18,8 +18,8 @@ Start with PESA FAMS to examine tested application workflows, then Interview Nai
 
 ## Remaining work
 
-- Exercise each frontend build in a clean environment and retain results.
-- Test database-backed paths against a disposable PostgreSQL instance.
+- All four frontend builds passed locally; confirm the configured GitHub Actions run after pushing.
+- Extend verified database reads, authorization and rollback checks to all write workflows and concurrent approvals.
 - Review authentication, authorization, rate limits and dependency advisories before internet deployment.
 - Add deployment instructions only for environments actually tested.
 - Record measured performance only with a reproducible workload and environment.

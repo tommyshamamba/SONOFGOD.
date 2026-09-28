@@ -4,7 +4,7 @@ A portfolio-ready monorepo that pairs a FastAPI image-processing service with a 
 
 ## What is included
 
-- **Trace API** — validates uploaded images and returns a PNG using a near-white-pixel alpha mask. ONNX inference is not implemented. The existing health flag detects a model file's presence, not successful model loading or inference; do not use that flag as evidence of model readiness.
+- **Trace API** — executes U2-Net/U2-NetP ONNX inference on CPU, validates and warms up the model before readiness, and preserves image transparency. Optional development fallback is explicitly reported.
 - **Storefront** — a responsive creator flow for artwork uploads, product discovery, and print-product previews.
 - **Local environment** — Docker Compose launches both services together.
 - **Quality gates** — API health test and GitHub Actions workflow.
@@ -14,6 +14,7 @@ A portfolio-ready monorepo that pairs a FastAPI image-processing service with a 
 ### Docker
 
 ```bash
+python scripts/download_model.py
 docker compose up --build
 ```
 
@@ -40,7 +41,16 @@ npm run dev
 
 `POST /v1/remove-background` accepts an `image` form field containing PNG, JPEG, or WebP up to 10 MB and returns `image/png`.
 
-> The checked-in implementation deliberately does not redistribute a model file. Mount a licensed U²-Net-compatible ONNX model at `/models/u2net.onnx` to signal model readiness, then replace the documented fallback mask with the model inference adapter for production.
+Model weights are excluded from Git. The download script retrieves U2NetP from the rembg release and verifies the upstream checksum. Review upstream model licensing before deployment. Compose mounts `models/` read-only.
+
+Set `REQUIRE_MODEL=true` when inference is required; missing, corrupt or incompatible models then prevent startup. Without Docker, set `MODEL_PATH` to the absolute weights path. `/health` and `/ready` report active mode. Inference failures return 503; existing transparency is preserved. Uploads are limited to 10 MB and 16 megapixels.
+
+## Verification
+
+From `services/trace-api`, run `pip install -r requirements-test.txt` and `python -m pytest tests`. Set `TEST_PRETRAINED_MODEL` to downloaded weights to include the optional pretrained smoke test. This verifies execution, not segmentation quality across a benchmark dataset.
+
+From `apps/storefront`, run `npm ci` and `npm run build`. Restricted Windows environments can set `BUILD_WITH_THREADS=1` to avoid child-process restrictions.
+
 
 ## Production next steps
 
@@ -48,4 +58,4 @@ npm run dev
 2. Put image jobs behind Redis and a worker queue.
 3. Persist products and orders in PostgreSQL through Prisma.
 4. Implement Stripe Checkout using server-side price IDs and webhook verification.
-5. Add ONNX model inference, request tracing, rate limiting, and image retention policies.
+5. Add request tracing, rate limiting, and image retention policies.
