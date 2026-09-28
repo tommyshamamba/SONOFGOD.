@@ -4,6 +4,8 @@ This repository contains multiple projects in folders. They will not appear as s
 
 [Project catalog and remaining work](docs/PROJECT_CATALOG.md) | [Development workflow](CONTRIBUTING.md) | [Automated checks](.github/workflows/projects.yml)
 
+[Prioritized PR roadmap](docs/PR_ROADMAP.md) | [Production-readiness checklist](docs/PRODUCTION_READINESS.md)
+
 ## Portfolio projects
 
 | Project | Source and documentation |
