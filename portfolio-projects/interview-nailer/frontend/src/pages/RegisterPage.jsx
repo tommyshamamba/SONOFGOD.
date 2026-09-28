@@ -13,7 +13,7 @@ export default function RegisterPage() {
   const handle = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirm) { toast.error('Passwords do not match'); return; }
-    if (form.password.length < 8)       { toast.error('Password must be at least 8 characters'); return; }
+    if (form.password.length < 12)       { toast.error('Password must be at least 12 characters'); return; }
     setLoading(true);
     try {
       await register(form.email, form.password, form.full_name);
@@ -48,7 +48,7 @@ export default function RegisterPage() {
           </div>
           <div style={styles.field}>
             <label style={styles.label}>Password</label>
-            <input style={styles.input} type="password" required placeholder="Min. 8 characters" {...f('password')} />
+            <input style={styles.input} type="password" required placeholder="Min. 12 characters" {...f('password')} />
           </div>
           <div style={styles.field}>
             <label style={styles.label}>Confirm Password</label>

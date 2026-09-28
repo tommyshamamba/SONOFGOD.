@@ -73,6 +73,7 @@ app.add_middleware(
     allow_origins=[origin for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")],
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
+    expose_headers=["X-Trace-Processor"],
 )
 
 

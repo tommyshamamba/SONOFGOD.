@@ -1,13 +1,13 @@
 const { Pool } = require('pg');
 
-const { databaseUrl, nodeEnv, storageMode } = require('./env');
+const { databaseUrl, databaseSsl, storageMode } = require('./env');
 
 let pool = null;
 
 if (storageMode === 'postgres') {
   pool = new Pool({
     connectionString: databaseUrl,
-    ssl: nodeEnv === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: databaseSsl ? { rejectUnauthorized: true } : false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,

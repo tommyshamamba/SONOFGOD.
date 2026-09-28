@@ -1089,6 +1089,7 @@ async function getDepreciation(env) {
 async function runDepreciation(env, currentUser, requestedPeriod) {
   const { user } = await getCurrentUserContext(env, currentUser.id);
   const period = requestedPeriod || new Date().toISOString().slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new AppError(400, "Period must use YYYY-MM format.");
   const exchangeRate = await financeRepository.getLatestExchangeRate(env.databaseUrl, "USD");
   const assets = await financeRepository.listDepreciableAssets(env.databaseUrl);
 
@@ -1181,6 +1182,8 @@ async function approveDepreciation(env, currentUser, runId, notes = "") {
   const pendingAssetIds = lines.filter((line) => line.posting_status === "PENDING").map((line) => line.asset_id);
 
   const approvedRun = await withTransaction(env.databaseUrl, async (client) => {
+    // Claim the pending decision before writes; concurrent requests wait and then fail.
+    await approvalRepository.approveApprovalRequest(client, approvalRequest.id, user.id, notes || "Posted after checker approval.");
     await financeRepository.applyDepreciationToAssets(
       client,
       lines.filter((line) => line.posting_status === "PENDING").map((line) => ({
@@ -1192,7 +1195,6 @@ async function approveDepreciation(env, currentUser, runId, notes = "") {
     );
     await financeRepository.markDepreciationLinesPosted(client, targetRun.id, pendingAssetIds, batchReference);
     const updated = await financeRepository.approveDepreciationRun(client, targetRun.id, user.id, batchReference, "Posted to Finacle. Failed lines remain queued for retry.");
-    await approvalRepository.approveApprovalRequest(client, approvalRequest.id, user.id, notes || "Posted after checker approval.");
     await auditRepository.insertAuditLog(client, {
       actorUserId: user.id,
       actorName: user.name,
@@ -1226,16 +1228,18 @@ async function retryDepreciationFailures(env, currentUser, runId) {
 
   const retryReference = buildBatchReference(targetRun.period, "RETRY", failedLines.length);
   const retriedRun = await withTransaction(env.databaseUrl, async (client) => {
+    const claimed = await financeRepository.retryFailedDepreciationLines(client, targetRun.id, failedLines.map((line) => line.asset_id), retryReference);
+    if (!claimed.length) throw new AppError(409, "These failed lines have already been retried.");
+    const claimedIds = new Set(claimed.map((line) => line.asset_id));
     await financeRepository.applyDepreciationToAssets(
       client,
-      failedLines.map((line) => ({
+      failedLines.filter((line) => claimedIds.has(line.asset_id)).map((line) => ({
         assetId: line.asset_id,
         depreciationCharge: Number(line.depreciation_charge),
         closingNBV: Number(line.closing_nbv),
         postingStatus: "POSTED"
       }))
     );
-    await financeRepository.retryFailedDepreciationLines(client, targetRun.id, failedLines.map((line) => line.asset_id), retryReference);
     const updated = await financeRepository.updateDepreciationRunAfterRetry(client, targetRun.id, 0, `All failed posting lines cleared after retry batch ${retryReference}.`);
     await auditRepository.insertAuditLog(client, {
       actorUserId: user.id,
@@ -1289,8 +1293,8 @@ async function approveRequest(env, currentUser, approvalId, notes = "") {
     if (!workflow) throw new AppError(404, "Linked workflow no longer exists.");
 
     return withTransaction(env.databaseUrl, async (client) => {
-      const updatedWorkflow = await performWorkflowAdvance(client, workflow, user, { approvalRequestId: request.id });
       await approvalRepository.approveApprovalRequest(client, request.id, user.id, notes || "Approved by checker.");
+      const updatedWorkflow = await performWorkflowAdvance(client, workflow, user, { approvalRequestId: request.id });
       return { message: `Workflow moved to ${updatedWorkflow.status}.`, workflow: updatedWorkflow };
     });
   }

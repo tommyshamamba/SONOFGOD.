@@ -2,6 +2,13 @@
 
 Starter repo for a white-label Voice AI missed-call system and outbound sales toolkit.
 
+## Run the working local simulation
+
+Requires Python 3.12+. From this project folder run `python demo/server.py`, then open `http://127.0.0.1:8090`.
+Simulate a missed/answered call, inspect the follow-up draft, replay the event to verify duplicate protection, and optionally hear the script through browser speech playback. SQLite preserves events across restarts. Run `python -m unittest discover -s demo -p "test_*.py"` for offline tests.
+
+This is a local rules-based simulation. It makes no real calls, sends no SMS, and does not connect to an AI/CRM provider. Browser speech availability depends on installed voices. Use synthetic contact data. Provider integration steps below remain separate work for a live system.
+
 ## What this is
 
 This project scaffolds the five phases from the outbound playbook:

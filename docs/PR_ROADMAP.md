@@ -1,5 +1,7 @@
 # Engineering PR roadmap
 
+Latest local implementation progress: [demo fixes and verification](LOCAL_DEMO_VERIFICATION.md). The baseline below is retained for context.
+
 Baseline: local commit `3987438`, reviewed September 28, 2026.
 Scope: this repository's project collection, not every repository in a GitHub organization.
 These are proposed PRs, not opened GitHub pull requests or production certification.

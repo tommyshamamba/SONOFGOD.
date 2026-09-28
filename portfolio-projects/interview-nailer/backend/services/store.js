@@ -1,6 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 
 const db = require('../config/db');
 const { storageMode, storeFile } = require('../config/env');
@@ -79,31 +79,60 @@ function normalizeAnswer(record) {
   };
 }
 
-async function ensureStoreFile() {
-  await fs.mkdir(path.dirname(storeFile), { recursive: true });
+let initialization;
+let pendingWrite = Promise.resolve();
 
+async function createStoreFile() {
+  await fs.mkdir(path.dirname(storeFile), { recursive: true });
   try {
-    await fs.access(storeFile);
-  } catch {
-    await fs.writeFile(storeFile, JSON.stringify(EMPTY_STORE, null, 2));
+    await fs.writeFile(storeFile, JSON.stringify(EMPTY_STORE, null, 2), { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
   }
+}
+
+function ensureStoreFile() {
+  if (!initialization) initialization = createStoreFile().catch((error) => { initialization = null; throw error; });
+  return initialization;
 }
 
 async function readStore() {
   await ensureStoreFile();
   const raw = await fs.readFile(storeFile, 'utf8');
-  return raw ? JSON.parse(raw) : clone(EMPTY_STORE);
+  const data = JSON.parse(raw);
+  if (!data || !Object.keys(EMPTY_STORE).every((key) => Array.isArray(data[key]))) {
+    throw new Error('Invalid local store; restore it from a backup.');
+  }
+  return data;
 }
 
 async function writeStore(store) {
-  await fs.writeFile(storeFile, JSON.stringify(store, null, 2));
+  // Same-directory rename publishes a complete file. The queue below protects
+  // read-modify-write operations within this single local process.
+  const temporary = `${storeFile}.${uuidv4()}.tmp`;
+  let handle;
+  try {
+    handle = await fs.open(temporary, 'wx');
+    await handle.writeFile(JSON.stringify(store, null, 2));
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await fs.rename(temporary, storeFile);
+  } finally {
+    if (handle) await handle.close();
+    await fs.unlink(temporary).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+  }
 }
 
-async function withStore(callback) {
-  const store = await readStore();
-  const result = await callback(store);
-  await writeStore(store);
-  return result;
+function withStore(callback) {
+  const operation = pendingWrite.then(async () => {
+    const store = await readStore();
+    const result = await callback(store);
+    await writeStore(store);
+    return clone(result);
+  });
+  pendingWrite = operation.catch(() => {});
+  return operation;
 }
 
 function serializeJson(value) {
@@ -112,7 +141,7 @@ function serializeJson(value) {
 
 async function initialize() {
   if (storageMode === 'file') {
-    await ensureStoreFile();
+    await readStore();
     return;
   }
 
@@ -252,21 +281,6 @@ async function findResumeByIdForUser(resumeId, userId) {
 
   const store = await readStore();
   const resume = store.resumes.find((item) => item.id === resumeId && item.user_id === userId) || null;
-  return normalizeResume(resume);
-}
-
-async function findResumeById(resumeId) {
-  if (!resumeId) {
-    return null;
-  }
-
-  if (storageMode === 'postgres') {
-    const result = await db.query('SELECT * FROM resumes WHERE id = $1', [resumeId]);
-    return normalizeResume(result.rows[0] || null);
-  }
-
-  const store = await readStore();
-  const resume = store.resumes.find((item) => item.id === resumeId) || null;
   return normalizeResume(resume);
 }
 
@@ -431,7 +445,6 @@ module.exports = {
   findUserByEmail,
   createResume,
   findResumeByIdForUser,
-  findResumeById,
   getLatestResumeForUser,
   createSession,
   findSessionByIdForUser,

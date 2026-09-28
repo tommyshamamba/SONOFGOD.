@@ -1,5 +1,7 @@
 # Blockchain API Service
 
+For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+
 A blockchain API prototype with backend, frontend and infrastructure examples. Provider integrations and deployment require configuration and validation. This repository does not establish production readiness or commercial usage.
 
 ## Business Model

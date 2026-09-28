@@ -110,9 +110,10 @@ async function createApprovalRequest(client, input) {
         detail,
         branch_id,
         requested_by_user_id,
-        payload
+        payload,
+        status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'PENDING')
       RETURNING *
     `,
     [
@@ -156,10 +157,17 @@ async function approveApprovalRequest(client, approvalId, userId, notes = "") {
         approved_at = NOW(),
         decision_notes = $3
       WHERE id = $1
+        AND status = 'PENDING'
+        AND requested_by_user_id <> $2
       RETURNING *
     `,
     [approvalId, userId, notes]
   );
+  if (!result.rows[0]) {
+    const error = new Error("Approval is no longer pending or cannot be decided by its maker.");
+    error.statusCode = 409;
+    throw error;
+  }
   return result.rows[0];
 }
 
@@ -173,10 +181,17 @@ async function rejectApprovalRequest(client, approvalId, userId, notes = "") {
         rejected_at = NOW(),
         decision_notes = $3
       WHERE id = $1
+        AND status = 'PENDING'
+        AND requested_by_user_id <> $2
       RETURNING *
     `,
     [approvalId, userId, notes]
   );
+  if (!result.rows[0]) {
+    const error = new Error("Approval is no longer pending or cannot be decided by its maker.");
+    error.statusCode = 409;
+    throw error;
+  }
   return result.rows[0];
 }
 

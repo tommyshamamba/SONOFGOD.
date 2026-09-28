@@ -187,6 +187,7 @@ async function insertDepreciationRun(client, input) {
         approved_at = NULL,
         posted_at = NULL,
         gl_batch_reference = NULL
+      WHERE depreciation_runs.status = 'REJECTED'
       RETURNING *
     `,
     [
@@ -202,6 +203,11 @@ async function insertDepreciationRun(client, input) {
       input.summary
     ]
   );
+  if (!result.rows[0]) {
+    const error = new Error("This period already has an active or posted depreciation run.");
+    error.statusCode = 409;
+    throw error;
+  }
   return result.rows[0];
 }
 

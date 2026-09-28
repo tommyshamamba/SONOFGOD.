@@ -1,12 +1,16 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
+    networks:
+      default:
+        aliases: [blockchain-api-backend]
     ports:
-      - "3000:3000"
+      - "3300:3000"
     environment:
       - PORT=3000
+      - HOST=0.0.0.0
+      - DEMO_MODE=true
+      - DATA_FILE=/data/store.json
       - JWT_SECRET=dev-jwt-secret-change-in-production
       - REDIS_URL=redis://redis:6379
       - ETH_RPC_URL=https://eth.llamarpc.com
@@ -16,23 +20,17 @@ services:
     depends_on:
       - redis
     volumes:
-      - ./backend:/app
-      - /app/node_modules
-    command: npm run dev
+      - blockchain-data:/data
 
   frontend:
     build: ./frontend
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - backend
-    environment:
-      - REACT_APP_API_URL=http://localhost:3000
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+
+volumes:
+  blockchain-data:

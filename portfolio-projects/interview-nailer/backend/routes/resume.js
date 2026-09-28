@@ -2,106 +2,49 @@ const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const path = require('path');
-const fs = require('fs');
-
 const store = require('../services/store');
 const auth = require('../middleware/auth');
-const { callAI } = require('../config/ai');
+const { text, optionalText, uuid } = require('../services/validation');
 const PROMPTS = require('../prompts');
-
 const router = express.Router();
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${req.user.id}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
-
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (['.pdf', '.txt'].includes(ext)) {
-      cb(null, true);
-      return;
-    }
-
-    cb(new Error('Only PDF and TXT files are allowed.'));
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1 },
+  fileFilter(req, file, callback) {
+    if (['.pdf', '.txt'].includes(path.extname(file.originalname).toLowerCase())) return callback(null, true);
+    const error = new Error('Only PDF and TXT files are allowed.'); error.status = 415;
+    return callback(error);
   },
 });
-
-router.post('/upload', auth, upload.single('resume'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded.' });
-  }
-
+router.use(auth);
+router.post('/upload', upload.single('resume'), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+  let rawText;
   try {
-    let rawText = '';
-    const ext = path.extname(req.file.originalname).toLowerCase();
-
-    if (ext === '.pdf') {
-      const buffer = fs.readFileSync(req.file.path);
-      const parsed = await pdfParse(buffer);
-      rawText = parsed.text;
-    } else {
-      rawText = fs.readFileSync(req.file.path, 'utf8');
-    }
-
-    if (!rawText || rawText.trim().length < 100) {
-      return res.status(422).json({ error: 'Could not extract enough text from the uploaded file.' });
-    }
-
-    const extracted = await callAI(PROMPTS.resumeExtraction(rawText), 2500);
-    const resume = await store.createResume({
-      userId: req.user.id,
-      filePath: req.file.path,
-      rawText,
-      extracted,
-    });
-
+    if (path.extname(req.file.originalname).toLowerCase() === '.pdf') {
+      if (req.file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-') return res.status(422).json({ error: 'Invalid PDF file.' });
+      rawText = (await pdfParse(req.file.buffer)).text;
+    } else { rawText = req.file.buffer.toString('utf8'); }
+  } catch { return res.status(422).json({ error: 'Could not read the uploaded document.' }); }
+  if (!text(rawText, 50000) || rawText.trim().length < 100 || rawText.includes('\u0000')) {
+    return res.status(422).json({ error: 'Upload readable text with between 100 and 50000 characters.' });
+  }
+  try {
+    const extracted = await req.app.locals.ai.callAI(PROMPTS.resumeExtraction(rawText), 2500, 'resume');
+    const resume = await store.createResume({ userId: req.user.id, filePath: null, rawText, extracted });
     return res.json({ resume, extracted });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Resume processing failed.', detail: error.message });
-  }
+  } catch (error) { return next(error); }
 });
-
-router.post('/match', auth, async (req, res) => {
+router.post('/match', async (req, res, next) => {
   const { resume_id, job_role, job_description } = req.body;
-  if (!resume_id || !job_role) {
-    return res.status(400).json({ error: 'resume_id and job_role are required.' });
-  }
-
+  if (!uuid(resume_id) || !text(job_role, 200) || !optionalText(job_description, 15000)) return res.status(400).json({ error: 'A valid resume_id and job_role are required.' });
   try {
     const resume = await store.findResumeByIdForUser(resume_id, req.user.id);
-    if (!resume) {
-      return res.status(404).json({ error: 'Resume not found.' });
-    }
-
-    const match = await callAI(PROMPTS.skillMatch(resume, job_role, job_description), 1500);
-    return res.json(match);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Match analysis failed.' });
-  }
+    if (!resume) return res.status(404).json({ error: 'Resume not found.' });
+    return res.json(await req.app.locals.ai.callAI(PROMPTS.skillMatch(resume, job_role, job_description), 1500, 'match'));
+  } catch (error) { return next(error); }
 });
-
-router.get('/', auth, async (req, res) => {
-  try {
-    const resume = await store.getLatestResumeForUser(req.user.id);
-    return res.json(resume);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Failed to fetch resume.' });
-  }
+router.get('/', async (req, res, next) => {
+  try { return res.json(await store.getLatestResumeForUser(req.user.id)); } catch (error) { return next(error); }
 });
-
 module.exports = router;

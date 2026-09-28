@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --ignore-scripts
+      - run: npm ci --ignore-scripts
       - run: npm run db:migrate
       - run: npm run db:seed
       - run: npm test
@@ -69,6 +69,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
+      - run: npm test
       - run: npm run build
   react-frontends:
     runs-on: ubuntu-latest
@@ -87,3 +88,71 @@ jobs:
       - run: npm run build
         env:
           CI: 'true'
+  backend-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [blockchain-api-service, kubernetes-demo]
+    defaults:
+      run:
+        working-directory: portfolio-projects/${{ matrix.project }}/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+  interview-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: interview_test_integration
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: portfolio-projects/interview-nailer/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run db:init && npm test
+        env:
+          TEST_STORAGE_MODE: postgres
+          STORAGE_MODE: postgres
+          DATABASE_URL: postgresql://postgres:ci-test-only@localhost:5432/interview_test_integration
+          DATABASE_SSL: 'false'
+          AI_MODE: mock
+  voice-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s portfolio-projects/voice-ai-missed-call/demo -p 'test_*.py' -v
+  terraform-validation:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [terraform-modules/vpc, terraform-modules/alb, kubernetes-demo/terraform]
+    defaults:
+      run:
+        working-directory: portfolio-projects/${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+      - run: terraform fmt -check
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate -no-color

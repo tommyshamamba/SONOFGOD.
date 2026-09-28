@@ -1,5 +1,7 @@
 # Interview Nailer
 
+For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+
 Interview Nailer is a full-stack interview prep app with:
 
 - resume upload and parsing

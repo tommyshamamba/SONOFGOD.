@@ -1,5 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { useEffect, useState } from 'react';
+import { getServiceStatus } from './api';
 
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import LoginPage from './pages/LoginPage';
@@ -18,9 +20,19 @@ function PrivateRoute({ children }) {
 }
 
 function App() {
+  const [mode, setMode] = useState('checking');
+  useEffect(() => {
+    let active = true;
+    getServiceStatus().then(({ data }) => { if (active) setMode(data.ai_mode); })
+      .catch(() => { if (active) setMode('unavailable'); });
+    return () => { active = false; };
+  }, []);
   return (
     <BrowserRouter>
       <AuthProvider>
+        {mode !== 'anthropic' && <div role="status" style={{ background: '#fff1cc', color: '#302000', padding: '10px 20px', font: '14px system-ui', textAlign: 'center' }}>
+          {mode === 'mock' ? 'Demo mode: sample responses and scores. No live AI provider is called.' : mode === 'checking' ? 'Checking service mode…' : 'Service connection unavailable. Check that the backend is running.'}
+        </div>}
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
           <Route path="/login" element={<LoginPage />} />

@@ -1,5 +1,7 @@
 # Kubernetes Demo Project
 
+For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+
 A practical microservices application demonstrating key Kubernetes concepts including Deployments, Services, ConfigMaps, Secrets, and Horizontal Pod Autoscaling.
 
 ## Architecture

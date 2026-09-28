@@ -1,16 +1,18 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
+    networks:
+      default:
+        aliases: [backend-service]
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - HOST=0.0.0.0
       - APP_NAME=k8s-demo
       - LOG_LEVEL=debug
-      - FEATURE_FLAGS='{"newFeature": true, "betaFeature": false}'
+      - FEATURE_FLAGS={"newFeature":true,"betaFeature":false}
       - API_KEY=dev-api-key
       - DB_PASSWORD=dev-password
     volumes:

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
-  const [view, setView] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [apiKeys, setApiKeys] = useState([]);
@@ -14,10 +13,21 @@ function App() {
   const [testAddress, setTestAddress] = useState('');
   const [testChain, setTestChain] = useState('ethereum');
   const [message, setMessage] = useState('');
+  const [testApiKey, setTestApiKey] = useState('');
+  const [createdApiKey, setCreatedApiKey] = useState('');
+  const [mode, setMode] = useState('unknown');
+
+  useEffect(() => {
+    axios.get(`${API_URL}/health`).then(response => setMode(response.data.mode)).catch(() => setMode('unavailable'));
+  }, []);
 
   useEffect(() => {
     if (token) {
-      fetchApiKeys();
+      let active = true;
+      axios.get(`${API_URL}/api/keys`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(response => { if (active) setApiKeys(response.data.keys); })
+        .catch(() => { if (active) setMessage({ text: 'Could not load keys. Sign in again if your session expired.', type: 'error' }); });
+      return () => { active = false; };
     }
   }, [token]);
 
@@ -32,7 +42,6 @@ function App() {
       const res = await axios.post(`${API_URL}/api/auth/register`, { email, password });
       localStorage.setItem('token', res.data.token);
       setToken(res.data.token);
-      setView('dashboard');
       showMessage('Registration successful!', 'success');
     } catch (error) {
       showMessage(error.response?.data?.error || 'Registration failed', 'error');
@@ -44,7 +53,6 @@ function App() {
       const res = await axios.post(`${API_URL}/api/auth/login`, { email, password });
       localStorage.setItem('token', res.data.token);
       setToken(res.data.token);
-      setView('dashboard');
       showMessage('Login successful!', 'success');
     } catch (error) {
       showMessage(error.response?.data?.error || 'Login failed', 'error');
@@ -54,8 +62,10 @@ function App() {
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
-    setView('login');
     setApiKeys([]);
+    setTestApiKey('');
+    setCreatedApiKey('');
+    setBalanceData(null);
   };
 
   // API Key functions
@@ -76,7 +86,9 @@ function App() {
         { name: newKeyName },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      showMessage(`API Key created: ${res.data.apiKey}`, 'success');
+      setCreatedApiKey(res.data.apiKey);
+      setTestApiKey(res.data.apiKey);
+      showMessage('API key created. Save it before leaving this page.', 'success');
       setNewKeyName('');
       fetchApiKeys();
     } catch (error) {
@@ -98,16 +110,15 @@ function App() {
 
   // Test API function
   const testBalance = async () => {
-    if (!apiKeys.length) {
-      showMessage('Create an API key first', 'error');
+    if (!testApiKey.trim()) {
+      showMessage('Create a key or paste your saved full API key.', 'error');
       return;
     }
     
     try {
-      const fullKey = apiKeys[0].key.replace('...', '').substring(0, 32) + apiKeys[0].key.substring(32).replace('...', '');
       const res = await axios.get(
         `${API_URL}/api/v1/${testChain}/balance/${testAddress}`,
-        { headers: { 'X-API-Key': apiKeys[0].fullKey || 'test' } }
+        { headers: { 'X-API-Key': testApiKey.trim() }, timeout: 12000 }
       );
       setBalanceData(res.data);
       showMessage('Balance fetched successfully', 'success');
@@ -148,6 +159,8 @@ function App() {
           <label style={{ display: 'block', marginBottom: '5px' }}>Password</label>
           <input
             type="password"
+            minLength={12}
+            placeholder="At least 12 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '5px' }}
@@ -201,6 +214,11 @@ function App() {
         </button>
       </div>
 
+      <p role="status" style={{ padding: '12px', background: '#fef3c7' }}>
+        {mode === 'demo' ? 'Offline demo: balances, blocks and fees are sample data. No blockchain network is contacted.' :
+          mode === 'live' ? 'Live RPC mode: read results come from the configured blockchain providers.' : 'API connection has not been verified.'}
+      </p>
+
       {message && (
         <div style={{ 
           padding: '10px', 
@@ -217,6 +235,14 @@ function App() {
         {/* API Keys Section */}
         <div style={{ background: '#f9fafb', padding: '20px', borderRadius: '10px' }}>
           <h2 style={{ marginTop: 0 }}>API Keys</h2>
+
+          {createdApiKey && (
+            <div style={{ overflowWrap: 'anywhere', padding: '12px', background: '#d1fae5', marginBottom: '15px' }}>
+              <strong>Save this full key now. It is shown only once.</strong>
+              <p><code>{createdApiKey}</code></p>
+              <button onClick={() => setCreatedApiKey('')}>Hide key</button>
+            </div>
+          )}
           
           <div style={{ marginBottom: '20px' }}>
             <input
@@ -247,7 +273,7 @@ function App() {
                   </div>
                   {!key.revoked && (
                     <button
-                      onClick={() => revokeApiKey(key.key)}
+                      onClick={() => revokeApiKey(key.id)}
                       style={{ padding: '5px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
                     >
                       Revoke
@@ -265,6 +291,13 @@ function App() {
         {/* API Test Section */}
         <div style={{ background: '#f9fafb', padding: '20px', borderRadius: '10px' }}>
           <h2 style={{ marginTop: 0 }}>Test API</h2>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="test-api-key" style={{ display: 'block', marginBottom: '5px' }}>Full API key</label>
+            <input id="test-api-key" type="password" value={testApiKey} onChange={e => setTestApiKey(e.target.value)}
+              placeholder="Paste bk_... or create a new key" autoComplete="off"
+              style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '5px' }} />
+          </div>
           
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px' }}>Chain</label>

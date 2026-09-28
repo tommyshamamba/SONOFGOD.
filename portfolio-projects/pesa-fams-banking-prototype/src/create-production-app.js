@@ -18,8 +18,9 @@ function createProductionApp(env) {
   app.use(express.static(path.join(__dirname, "..", "public")));
 
   const sendError = (res, error) => {
-    const statusCode = error.statusCode || 500;
-    res.status(statusCode).json({ error: error.message || "Unexpected server error." });
+    const statusCode = error instanceof z.ZodError ? 400 : error.code === "23505" ? 409 : error.statusCode || 500;
+    const message = error instanceof z.ZodError ? "Invalid request data." : error.code === "23505" ? "A record with that identifier already exists." : statusCode >= 500 ? "Unexpected server error." : error.message;
+    res.status(statusCode).json({ error: message });
   };
 
   const withHandler = (handler) => async (req, res, next) => {
@@ -40,7 +41,8 @@ function createProductionApp(env) {
         return res.status(401).json({ error: "Authentication required." });
       }
       const payload = jwt.verify(token, env.jwtSecret);
-      req.currentUser = { id: payload.sub, role: payload.role };
+      const { user } = await systemService.getCurrentUserContext(env, payload.sub);
+      req.currentUser = { id: user.id, role: user.role };
       return next();
     } catch (_error) {
       return res.status(401).json({ error: "Invalid or expired session." });

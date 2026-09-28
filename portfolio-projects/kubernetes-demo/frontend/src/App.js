@@ -5,8 +5,9 @@ function App() {
   const [config, setConfig] = useState(null);
   const [secret, setSecret] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+  const API_URL = process.env.REACT_APP_API_URL || '';
 
   useEffect(() => {
     fetchData();
@@ -17,30 +18,33 @@ function App() {
   const fetchData = async () => {
     try {
       const response = await fetch(`${API_URL}/api/data`);
+      if (!response.ok) throw new Error(`Backend returned ${response.status}`);
       const json = await response.json();
       setData(json);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      setError('Could not load API data. Check that the backend is running.');
     }
   };
 
   const fetchConfig = async () => {
     try {
       const response = await fetch(`${API_URL}/api/config`);
+      if (!response.ok) throw new Error(`Backend returned ${response.status}`);
       const json = await response.json();
       setConfig(json);
     } catch (error) {
-      console.error('Error fetching config:', error);
+      setError('Could not load configuration. Check the backend connection.');
     }
   };
 
   const fetchSecret = async () => {
     try {
       const response = await fetch(`${API_URL}/api/secret`);
+      if (!response.ok) throw new Error(`Backend returned ${response.status}`);
       const json = await response.json();
       setSecret(json);
     } catch (error) {
-      console.error('Error fetching secret:', error);
+      setError('Could not load configuration status. Check the backend connection.');
     } finally {
       setLoading(false);
     }
@@ -52,6 +56,7 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }}>
+      {error && <p role="alert">{error}</p>}
       <h1 style={{ color: '#326ce5' }}>Kubernetes Demo Application</h1>
       
       <div style={{ marginBottom: '30px' }}>
@@ -88,7 +93,7 @@ function App() {
       </div>
 
       <button 
-        onClick={() => { fetchData(); fetchConfig(); fetchSecret(); }}
+        onClick={() => { setError(''); fetchData(); fetchConfig(); fetchSecret(); }}
         style={{
           background: '#326ce5',
           color: 'white',

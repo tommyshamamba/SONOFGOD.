@@ -7,8 +7,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: blockchain-api-backend
-  minReplicas: 2
-  maxReplicas: 10
+  # File storage requires one writer. Replace it with shared storage before scaling.
+  minReplicas: 1
+  maxReplicas: 1
   metrics:
   - type: Resource
     resource:

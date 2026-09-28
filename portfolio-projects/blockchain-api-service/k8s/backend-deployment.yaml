@@ -6,7 +6,9 @@ metadata:
     app: blockchain-api
     component: backend
 spec:
-  replicas: 3
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: blockchain-api
@@ -23,6 +25,12 @@ spec:
         ports:
         - containerPort: 3000
         env:
+        - name: HOST
+          value: "0.0.0.0"
+        - name: DEMO_MODE
+          value: "true"
+        - name: DATA_FILE
+          value: /data/store.json
         - name: PORT
           value: "3000"
         - name: JWT_SECRET
@@ -62,6 +70,9 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /data
         livenessProbe:
           httpGet:
             path: /health
@@ -70,7 +81,11 @@ spec:
           periodSeconds: 20
         readinessProbe:
           httpGet:
-            path: /health
+            path: /ready
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: blockchain-api-data

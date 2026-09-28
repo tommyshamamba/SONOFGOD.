@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {"node_modules", ".git", ".next", "build", "dist", ".venv", "__pycache__"}
+SKIP = {"node_modules", ".git", ".next", ".terraform", ".test-data", "build", "dist", ".venv", "__pycache__"}
 
 
 def source_files(base):

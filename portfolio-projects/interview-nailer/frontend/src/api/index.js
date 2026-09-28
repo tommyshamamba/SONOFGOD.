@@ -39,6 +39,7 @@ const API_BASE_HINT = (() => {
 })();
 
 const API = axios.create({ baseURL: API_BASE });
+export const getServiceStatus = () => API.get('/status');
 
 function isNetworkError(error) {
   return !error?.response && (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || !!error?.request);
@@ -111,8 +112,13 @@ export const streamAnswer = async (data, onChunk, onDone) => {
     body: JSON.stringify(data),
   });
 
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed (${response.status}).`);
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let pending = '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -120,22 +126,27 @@ export const streamAnswer = async (data, onChunk, onDone) => {
       break;
     }
 
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n').filter((line) => line.startsWith('data:'));
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split('\n');
+    pending = lines.pop();
     for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
       const raw = line.replace('data: ', '').trim();
       if (raw === '[DONE]') {
         onDone();
+        await reader.cancel();
         return;
       }
 
       try {
-        onChunk(JSON.parse(raw).text);
+        const data = JSON.parse(raw);
+        if (typeof data.text === 'string') onChunk(data.text);
       } catch {
         // Ignore malformed chunks.
       }
     }
   }
+  throw new Error('The answer stream ended before completion. Please try again.');
 };
 
 export default API;

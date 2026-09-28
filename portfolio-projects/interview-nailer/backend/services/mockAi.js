@@ -207,10 +207,10 @@ function extractExperience(text, titleHint) {
 
   return [
     {
-      company: 'Recent Employer',
+      company: 'Employer not extracted (demo)',
       title: titleHint || 'Technical Professional',
       dates: 'Most recent role',
-      bullets: bulletLines.length ? bulletLines : ['Delivered reliable support, troubleshooting, and project execution across core systems.'],
+      bullets: bulletLines,
     },
   ];
 }
@@ -218,7 +218,7 @@ function extractExperience(text, titleHint) {
 function buildSummary(name, titleHint, skills) {
   const lead = name ? `${name} is a` : 'This candidate is a';
   const skillText = skills.length ? skills.slice(0, 4).join(', ') : 'technical troubleshooting and delivery';
-  return `${lead} ${titleHint || 'technology professional'} with hands-on experience in ${skillText}. They show strong ownership, practical problem solving, and a track record of supporting production environments.`;
+  return `${lead} ${titleHint || 'technology professional'}. This demo found these keywords in the uploaded text: ${skillText}. Confirm the extracted details before using them.`;
 }
 
 function normalizeScore(score) {
@@ -364,7 +364,7 @@ function mockQuestions(prompt) {
   const resumeData = parseJsonBlock(extractBlock(prompt, 'CANDIDATE PROFILE:\n', '\n\nTARGET ROLE:')) || {};
   const jobRole = extractLine(prompt, 'TARGET ROLE:');
   const jobDescription = extractLine(prompt, 'JOB DESCRIPTION:');
-  const difficulty = extractLine(prompt, 'DIFFICULTY:') || 'intermediate';
+  const difficulty = { beginner: 'easy', intermediate: 'medium', advanced: 'hard' }[extractLine(prompt, 'DIFFICULTY:')] || 'medium';
   const topSkill = (resumeData.skills || [])[0] || inferRoleSkills(jobRole, jobDescription)[0] || 'troubleshooting';
   const roleLabel = titleCase(jobRole || 'Technical Role');
 

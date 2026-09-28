@@ -6,6 +6,8 @@ This repository contains multiple projects in folders. They will not appear as s
 
 [Prioritized PR roadmap](docs/PR_ROADMAP.md) | [Production-readiness checklist](docs/PRODUCTION_READINESS.md)
 
+**Start here:** [Run the local demos](docs/LOCAL_DEMOS.md) · [Latest fix and test results](docs/LOCAL_DEMO_VERIFICATION.md)
+
 ## Portfolio projects
 
 | Project | Source and documentation |

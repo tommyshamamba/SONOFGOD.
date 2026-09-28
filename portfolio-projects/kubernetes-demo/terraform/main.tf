@@ -1,29 +1,10 @@
 terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
   backend "s3" {
     bucket         = "kubernetes-demo-terraform-state"
     key            = "kubernetes-demo/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "kubernetes-demo-terraform-locks"
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = "kubernetes-demo"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-    }
   }
 }
 
@@ -35,15 +16,15 @@ module "vpc" {
   name = "${var.project_name}-vpc"
   cidr = var.vpc_cidr
 
-  azs              = var.availability_zones
-  private_subnets  = var.private_subnet_cidrs
-  public_subnets   = var.public_subnet_cidrs
+  azs             = var.availability_zones
+  private_subnets = var.private_subnet_cidrs
+  public_subnets  = var.public_subnet_cidrs
 
   enable_nat_gateway     = true
   single_nat_gateway     = true
   one_nat_gateway_per_az = false
 
-  enable_vpn_gateway = false
+  enable_vpn_gateway   = false
   enable_dns_hostnames = true
   enable_dns_support   = true
 
@@ -184,7 +165,7 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type = "forward"
+    type             = "forward"
     target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
@@ -256,7 +237,7 @@ resource "aws_iam_role" "external_dns" {
         }
         Condition = {
           StringEquals = {
-            "${replace(module.eks.oidc_provider_arn, "arn:aws:iam::[0-9]+:oidc-provider/", ""):sub": "system:serviceaccount:kube-system:external-dns"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:external-dns"
           }
         }
       }

@@ -1,5 +1,7 @@
 # Implementation and verification report
 
+Latest local implementation progress: [demo fixes and verification](LOCAL_DEMO_VERIFICATION.md). The baseline below is retained for context.
+
 Reviewed September 28, 2026. These results verify specific working paths, not production certification.
 
 ## Implemented

@@ -1,5 +1,7 @@
 # Production-readiness checklist
 
+Latest local implementation progress: [demo fixes and verification](LOCAL_DEMO_VERIFICATION.md). The baseline below is retained for context.
+
 Scope: projects in this repository. Baseline evidence is local commit `3987438`.
 Checked items describe completed local verification only. Unchecked items require evidence, not necessarily new code. This checklist is not a certification.
 

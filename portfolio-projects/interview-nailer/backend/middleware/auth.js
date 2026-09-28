@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 const { jwtSecret } = require('../config/env');
+const { uuid } = require('../services/validation');
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
@@ -11,7 +12,8 @@ function authMiddleware(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, jwtSecret);
+    req.user = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
+    if (!uuid(req.user.id)) return res.status(401).json({ error: 'Invalid token' });
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

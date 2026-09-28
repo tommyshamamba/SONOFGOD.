@@ -4,3 +4,11 @@ pytest-cache-files-*/
 __pycache__/
 *.pyc
 *.onnx
+.test-data/
+.terraform/
+*.tfstate
+*.tfstate.*
+playwright-report/
+.env
+.env.local
+.env.production

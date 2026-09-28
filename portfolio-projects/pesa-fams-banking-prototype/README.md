@@ -1,5 +1,7 @@
 # PESA FAMS
 
+For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+
 Bank DRC Fixed Asset Management System with two runtime modes:
 
 - `prototype` mode for fast demo work without PostgreSQL

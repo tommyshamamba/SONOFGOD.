@@ -7,20 +7,26 @@ const { jwtSecret, jwtExpiresIn } = require('../config/env');
 
 const router = express.Router();
 
+function validCredentials(email, password) {
+  return typeof email === 'string' && email.trim().length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
+    typeof password === 'string' && password.length > 0 && Buffer.byteLength(password, 'utf8') <= 72;
+}
+
 router.post('/register', async (req, res) => {
   const { email, password, full_name } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+  if (!validCredentials(email, password) || password.length < 12 ||
+      (full_name != null && (typeof full_name !== 'string' || full_name.length > 200))) {
+    return res.status(400).json({ error: 'Use a valid email and a password of at least 12 characters (at most 72 UTF-8 bytes).' });
   }
 
   try {
     const hash = await bcrypt.hash(password, 12);
     const user = await store.createUser({
-      email,
+      email: email.trim().toLowerCase(),
       passwordHash: hash,
       fullName: full_name,
     });
-    const token = jwt.sign({ id: user.id, email: user.email }, jwtSecret, { expiresIn: jwtExpiresIn });
+    const token = jwt.sign({ id: user.id, email: user.email }, jwtSecret, { algorithm: 'HS256', expiresIn: jwtExpiresIn });
 
     res.status(201).json({ token, user });
   } catch (error) {
@@ -35,12 +41,12 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) {
+  if (!validCredentials(email, password)) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
   try {
-    const user = await store.findUserByEmail(email);
+    const user = await store.findUserByEmail(email.trim().toLowerCase());
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
@@ -50,7 +56,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, jwtSecret, { expiresIn: jwtExpiresIn });
+    const token = jwt.sign({ id: user.id, email: user.email }, jwtSecret, { algorithm: 'HS256', expiresIn: jwtExpiresIn });
     return res.json({
       token,
       user: { id: user.id, email: user.email, full_name: user.full_name },

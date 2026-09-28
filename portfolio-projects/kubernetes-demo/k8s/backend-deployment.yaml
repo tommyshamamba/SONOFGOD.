@@ -20,6 +20,8 @@ spec:
         ports:
         - containerPort: 3000
         env:
+        - name: HOST
+          value: "0.0.0.0"
         - name: PORT
           value: "3000"
         - name: NODE_ENV
@@ -75,7 +77,7 @@ spec:
           periodSeconds: 20
         readinessProbe:
           httpGet:
-            path: /health
+            path: /ready
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10

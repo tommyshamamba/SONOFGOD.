@@ -363,9 +363,9 @@ async function getDefaultAccountsForCategory(databaseUrl, categoryKey) {
     databaseUrl,
     `
       SELECT
-        MAX(CASE WHEN account_type = 'asset' THEN id END) AS gl_asset_account_id,
-        MAX(CASE WHEN account_type = 'depreciation_expense' THEN id END) AS gl_depreciation_expense_account_id,
-        MAX(CASE WHEN account_type = 'accumulated_depreciation' THEN id END) AS gl_accumulated_depreciation_account_id
+        MAX(CASE WHEN account_type = 'asset' THEN id::text END)::uuid AS gl_asset_account_id,
+        MAX(CASE WHEN account_type = 'depreciation_expense' THEN id::text END)::uuid AS gl_depreciation_expense_account_id,
+        MAX(CASE WHEN account_type = 'accumulated_depreciation' THEN id::text END)::uuid AS gl_accumulated_depreciation_account_id
       FROM gl_accounts
       WHERE category_key = $1
         AND is_active = TRUE

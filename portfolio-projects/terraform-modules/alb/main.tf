@@ -9,8 +9,8 @@ resource "aws_lb" "this" {
   security_groups    = var.security_group_ids
   subnets            = var.subnet_ids
 
-  enable_deletion_protection = var.enable_deletion_protection
-  enable_http2               = var.enable_http2
+  enable_deletion_protection       = var.enable_deletion_protection
+  enable_http2                     = var.enable_http2
   enable_cross_zone_load_balancing = var.enable_cross_zone_load_balancing
 
   dynamic "access_logs" {
@@ -53,9 +53,9 @@ resource "aws_lb_target_group" "this" {
   }
 
   stickiness {
-    type = var.stickiness_type
+    type            = var.stickiness_type
     cookie_duration = var.stickiness_cookie_duration
-    enabled = var.stickiness_enabled
+    enabled         = var.stickiness_enabled
   }
 
   tags = merge(
@@ -75,7 +75,7 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type = var.http_listener_action_type
-    
+
     dynamic "redirect" {
       for_each = var.http_listener_action_type == "redirect" ? [1] : []
       content {
@@ -88,7 +88,9 @@ resource "aws_lb_listener" "http" {
     dynamic "forward" {
       for_each = var.http_listener_action_type == "forward" && var.create_target_group ? [1] : []
       content {
-        target_group_arn = aws_lb_target_group.this[0].arn
+        target_group {
+          arn = aws_lb_target_group.this[0].arn
+        }
       }
     }
   }
@@ -104,7 +106,7 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.acm_certificate_arn
 
   default_action {
-    type = "forward"
+    type             = "forward"
     target_group_arn = var.create_target_group ? aws_lb_target_group.this[0].arn : null
   }
 }

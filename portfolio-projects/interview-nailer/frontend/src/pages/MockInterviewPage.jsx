@@ -49,6 +49,9 @@ export default function MockInterviewPage() {
         job_role: setup.job_role, job_description: setup.job_desc,
         resume_id: resume?.id, mode: setup.mode, difficulty: setup.difficulty
       });
+      if (!Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error("No interview questions were returned. Please try again.");
+      }
       setSession(data.session);
       setQuestions(data.questions);
       setStage(STAGES.INTRO);
