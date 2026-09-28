@@ -4,7 +4,7 @@ A portfolio-ready monorepo that pairs a FastAPI image-processing service with a 
 
 ## What is included
 
-- **Trace API** — validates uploaded images and returns a transparent PNG. It reports a model-ready state when an ONNX model is mounted and has a safe local-development fallback.
+- **Trace API** — validates uploaded images and returns a PNG using a near-white-pixel alpha mask. ONNX inference is not implemented. The existing health flag detects a model file's presence, not successful model loading or inference; do not use that flag as evidence of model readiness.
 - **Storefront** — a responsive creator flow for artwork uploads, product discovery, and print-product previews.
 - **Local environment** — Docker Compose launches both services together.
 - **Quality gates** — API health test and GitHub Actions workflow.

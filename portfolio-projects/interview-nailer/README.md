@@ -14,7 +14,7 @@ Interview Nailer is a full-stack interview prep app with:
 ### 1. Install dependencies
 
 ```powershell
-cd c:\Users\USER\banking-backend\banking-backend\interview-nailer
+cd portfolio-projects/interview-nailer
 npm run install:backend
 npm run install:frontend
 ```
@@ -46,44 +46,13 @@ The default local setup uses:
 
 That means you can run and demo the app without PostgreSQL or Anthropic.
 
-## Free hosting on Render
+## Hosting configuration
 
-This repo is prepared for a single public app URL on Render using:
+The included [render.yaml](render.yaml) needs service-root configuration for this multi-project repository. Review the provider's current plans, persistence and schema initialization before deploying. No hosted deployment has been verified in this review. Consult [Render's configuration documentation](https://render.com/docs/blueprint-spec) for current requirements.
 
-- one free Render web service
-- one free Render Postgres database
-- mock AI mode so no Anthropic key is required
+## Validation
 
-### What Render will do
-
-- build the React frontend
-- start the Express backend
-- serve the frontend and API from the same `onrender.com` URL
-- store users, sessions, and coaching data in Postgres
-
-### Deploy steps
-
-1. Push this `interview-nailer` folder to a GitHub repo.
-2. Sign in to Render.
-3. In Render, choose `New` -> `Blueprint`.
-4. Connect the GitHub repo.
-5. Render will detect [render.yaml](c:\Users\USER\banking-backend\banking-backend\interview-nailer\render.yaml).
-6. Approve creation of:
-   - `interview-nailer` web service
-   - `interview-nailer-db` Postgres database
-7. Wait for the first deploy to finish.
-8. Open the generated `https://<your-app>.onrender.com` link.
-
-### Important free-tier notes
-
-According to Render’s official docs, free web services are available, but they spin down after 15 minutes of inactivity and may take about a minute to wake up again. Free Postgres is available too, but expires after 30 days unless upgraded.
-
-Sources:
-
-- Render free hosting docs: https://render.com/docs/free
-- Render web services docs: https://render.com/docs/web-services
-- Render blueprint docs: https://render.com/docs/blueprint-spec
-- Render default environment variables: https://render.com/docs/environment-variables
+Run `npm run build:frontend` from this folder to build the UI. There is no automated behavioral test command in the current manifest. The default mock AI mode does not establish real model inference or production agent experience. Review authentication, data isolation and provider integration before internet deployment.
 
 ## Real services later
 

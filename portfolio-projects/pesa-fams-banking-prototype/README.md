@@ -10,6 +10,9 @@ Bank DRC Fixed Asset Management System with two runtime modes:
 ### Prototype mode
 
 ```powershell
+npm install
+$env:APP_MODE = "prototype"
+$env:HOST = "127.0.0.1"
 node src/server.js
 ```
 
@@ -18,6 +21,8 @@ Open `http://localhost:3100`.
 To open it from another PC on the same network, start the server and use the LAN URL printed in the terminal, for example `http://192.168.1.25:3100`.
 
 ### Database mode
+
+If you previously selected prototype mode in PowerShell, run `$env:APP_MODE = "database"` before starting the database-backed server. Use a disposable local database for setup and seed commands.
 
 1. Copy `.env.example` to `.env`
 2. Run a preflight check:
@@ -70,7 +75,9 @@ If Docker is not installed, the preflight script will tell you early and the app
 - `auditor@bankdrc.cd` / `Audit123!`
 - `it@bankdrc.cd` / `ITAdmin123!`
 
-## What is production-backed now
+## Implemented database-backed paths
+
+These features have source implementations. Live PostgreSQL integration and deployment require separate validation. Seeded asset and branch counts below describe generated demo data.
 
 - PostgreSQL schema and migration runner
 - Seed pipeline for 5,600 assets, 37 branches, users, GL balances, workflows, audit logs, and depreciation history

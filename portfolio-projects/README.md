@@ -11,6 +11,6 @@ Source snapshots of six local projects. These are portfolio and development proj
 | [Kubernetes Demo](kubernetes-demo/) | Application source, containers and Kubernetes/Terraform examples. |
 | [Terraform Modules](terraform-modules/) | VPC and load-balancer infrastructure modules. |
 
-Read each project's README for setup. Replace example credentials and configure your own services locally. Do not deploy sample credentials. Dependencies and applications were not executed as part of this source import.
+Read each project's README for setup. Replace example credentials and configure your own services locally. Do not deploy sample credentials. The initial import did not execute dependencies or applications. See [the review report](../docs/REVIEW_REPORT.md) for subsequent checks and their limits.
 
 Local environment files, runtime data, uploaded documents, logs, dependency directories and build outputs are excluded. The personal website containing a different person's name and the duplicate Interview Nailer distribution were not imported.

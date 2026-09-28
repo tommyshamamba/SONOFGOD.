@@ -2,6 +2,8 @@
 
 This repository contains multiple projects in folders. They will not appear as separate repositories on the GitHub profile. Open a project below to see its source and setup instructions.
 
+[Project catalog and remaining work](docs/PROJECT_CATALOG.md) | [Development workflow](CONTRIBUTING.md) | [Automated checks](.github/workflows/projects.yml)
+
 ## Portfolio projects
 
 | Project | Source and documentation |

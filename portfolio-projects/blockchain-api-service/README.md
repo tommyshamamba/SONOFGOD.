@@ -1,6 +1,6 @@
 # Blockchain API Service
 
-A production-ready blockchain API service that enables developers and businesses to easily integrate blockchain functionality without dealing with infrastructure complexity. This is a real infrastructure solution with monetization potential.
+A blockchain API prototype with backend, frontend and infrastructure examples. Provider integrations and deployment require configuration and validation. This repository does not establish production readiness or commercial usage.
 
 ## Business Model
 
