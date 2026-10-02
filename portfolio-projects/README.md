@@ -1,16 +1,18 @@
-# Project collection
+# Application and infrastructure projects
 
-Source snapshots of six local projects. These are portfolio and development projects; this import does not certify production readiness, deployment, benchmarks or commercial results. Existing repository projects remain in their original locations.
+[Portfolio home](../README.md) · [Project catalog](../docs/PROJECT_CATALOG.md) · [Local demo guide](../docs/LOCAL_DEMOS.md)
 
-| Project | Contents |
-|---|---|
-| [PESA FAMS banking prototype](pesa-fams-banking-prototype/) | Fixed-asset management demo and PostgreSQL-backed source. |
-| [Interview Nailer](interview-nailer/) | Interview-preparation application with frontend and backend source. |
-| [Voice AI Missed-Call](voice-ai-missed-call/) | Starter scripts, prompts and integration guides; provider setup is required. |
-| [Blockchain API Service](blockchain-api-service/) | API, frontend and infrastructure source. |
-| [Kubernetes Demo](kubernetes-demo/) | Application source, containers and Kubernetes/Terraform examples. |
-| [Terraform Modules](terraform-modules/) | VPC and load-balancer infrastructure modules. |
+Six projects with their own dependencies and setup instructions. The image-processing application lives separately in [Trace & Store](../trace-stores/).
 
-Read each project's README for setup. Replace example credentials and configure your own services locally. Do not deploy sample credentials. The initial import did not execute dependencies or applications. See [the review report](../docs/REVIEW_REPORT.md) for subsequent checks and their limits.
+| Project | What to explore |
+| --- | --- |
+| [PESA FAMS banking prototype](pesa-fams-banking-prototype/) | Fixed-asset workflows, approval rules, reporting and PostgreSQL storage. |
+| [Interview Nailer](interview-nailer/) | Interview preparation, account boundaries, structured responses and storage modes. |
+| [Blockchain API Service](blockchain-api-service/) | API-key lifecycle, persistent local storage and offline/provider modes. |
+| [Kubernetes Demo](kubernetes-demo/) | Frontend/backend application, containers and deployment configuration. |
+| [Terraform Modules](terraform-modules/) | VPC and application load-balancer infrastructure. |
+| [Voice AI Missed-Call](voice-ai-missed-call/) | Event simulation, response drafts, duplicate handling and integration guides. |
 
-Local environment files, runtime data, uploaded documents, logs, dependency directories and build outputs are excluded. The personal website containing a different person's name and the duplicate Interview Nailer distribution were not imported.
+Start from each project's README. The [verification report](../docs/LOCAL_DEMO_VERIFICATION.md) distinguishes completed local checks from provider and deployment work. These are development projects; example credentials and synthetic records are for local demonstrations.
+
+Private environment files, uploaded documents, runtime records, dependency directories and build outputs are excluded from the collection. New CV, RAG and commerce work is documented separately under [architecture proposals](../docs/plans/README.md).

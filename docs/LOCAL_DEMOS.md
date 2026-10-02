@@ -1,6 +1,8 @@
 # Run the local demos
 
-These commands run synthetic demonstrations on your computer. Node 22.15+ and Python 3.12 are required. Run each command from its named folder, in a separate terminal. Install dependencies once with `npm ci`. Stop a server with Ctrl+C.
+These commands run synthetic demonstrations on your computer. Use Node 24 and Python 3.12 for the setup and test commands below. Several test scripts use `--test-isolation=none`; Node 22 uses an older flag name. The published CI workflow still selects Node 22 and needs a separate runtime/test-command repair. See the [Node CLI reference](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode).
+
+Run each command from its named folder, in a separate terminal. Install dependencies once with `npm ci`. Stop a server with Ctrl+C. [Return to the portfolio](../README.md) or use the [documentation index](README.md) to find project status and verification reports.
 
 | Demo | Address | What works |
 |---|---|---|
