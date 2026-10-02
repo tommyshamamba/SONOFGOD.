@@ -2,23 +2,27 @@
 
 This report records observed checks for the portfolio. It distinguishes reproducible local and hosted tests from cloud deployment or live-provider validation.
 
-## Current repair run
+## Verified result — 2 October 2026 UTC
 
-The first hosted repair run, [36958294853](https://github.com/tommyshamamba/SONOFGOD./actions/runs/36958294853), tested source commit `9066af547adf70a42b05b68bebac248c9c9e671d`: **29 of 30 jobs passed**. The browser job exposed a prototype permission mismatch in PESA FAMS after the Trace and Interview journeys passed. This branch fixes that mismatch and reruns the complete workflow before merging.
+**All 30 hosted jobs passed** in [run 36959456953](https://github.com/tommyshamamba/SONOFGOD./actions/runs/36959456953), testing source commit [`cb07140ce49aba790a70ca0be5314709be6a7706`](https://github.com/tommyshamamba/SONOFGOD./commit/cb07140ce49aba790a70ca0be5314709be6a7706). The [workflow page](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml) shows subsequent runs. Documentation and screenshots may be published after this tested source commit.
+
+All six browser journeys passed with no uncaught browser exceptions. See [the application walkthrough](DEMO_GALLERY.md) for screenshots and engineering decisions.
 
 | Area | Evidence and scope |
 | --- | --- |
 | Frontends | Production builds for Trace, Interview, Blockchain and Kubernetes; Trace client tests and Interview API URL tests. |
 | Trace API | Eight Python tests, including real downloaded U2NetP inference, invalid uploads, model failure handling and required-model readiness. |
-| PESA FAMS | Domain/API tests and seven PostgreSQL integration cases against a disposable database; browser regression covers separate maker and checker accounts. |
+| PESA FAMS | 36 passing domain/API/integration cases, including seven against a disposable PostgreSQL database. Browser checks exercise separate maker/checker accounts, authenticated printing, account switching and auditor restrictions. |
 | Interview | API suites against file storage and real PostgreSQL, plus a complete browser session through persisted coaching. AI output uses deterministic mock mode. |
 | Blockchain | Ten API/storage cases including API-key ownership and revocation, dependency failures, exclusive locking and forced-crash recovery. Queries in browser/Compose use demo mode. |
 | Kubernetes | Two API tests; browser reads live local process metadata. |
 | Voice simulation | Python unit tests and browser event/replay flow against local SQLite. No telephone calls or messages are sent. |
 | Containers | Blockchain and Kubernetes Compose images build, become healthy, serve the frontend and proxy an API request. |
-| Terraform | Four directories initialize without a backend and validate. Reusable modules add mock-provider regression tests; no AWS resources are provisioned. |
+| Terraform | Four directories initialize without a backend and validate. Nine mock-provider cases cover VPC routing and ALB security-group/listener configuration; no AWS resources are provisioned. |
 | Dependency checks | Ten npm lockfile audits and a hash-locked Python dependency audit. Audit results describe published advisories at run time. |
 | Legacy experiments | 23 local EVM tests and 16 Python tests. Uses the repository proxy, synthetic contract fixtures, extracted bot functions and mocked network behavior; enforces the EIP-170 bytecode limit. |
+
+The frontend container images now include HTTP health checks, so Compose waits for the web server to accept requests before testing it. The banking prototype exposes supported permissions, rejects self-approval and duplicate posting, and labels its GL output as simulated.
 
 ## Reproduce
 

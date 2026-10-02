@@ -16,6 +16,12 @@ Applications, APIs and infrastructure projects covering image processing, interv
 | **[PESA FAMS](portfolio-projects/pesa-fams-banking-prototype/)** | Fixed-asset management with approval workflows, depreciation, reporting and a PostgreSQL implementation. | Node.js, Express, PostgreSQL, SQL |
 | **[Interview Nailer](portfolio-projects/interview-nailer/)** | Accounts, résumé upload, interview sessions, scoring, coaching and saved history. Local demonstrations use mock AI. | React, Node.js, Express, PostgreSQL |
 
+| Trace & Store | PESA FAMS | Interview Nailer |
+| --- | --- | --- |
+| [![Trace storefront](docs/images/trace.png)](trace-stores/) | [![PESA FAMS approval workflow](docs/images/banking.png)](portfolio-projects/pesa-fams-banking-prototype/) | [![Interview coaching report](docs/images/interview.png)](portfolio-projects/interview-nailer/) |
+
+Screenshots come from the tested applications using synthetic data. [Explore all six demos and their engineering decisions](docs/DEMO_GALLERY.md).
+
 These are development projects with local demonstration workflows. The [verification report](docs/VERIFICATION.md) records completed checks and remaining limits; production deployment and performance benchmarks are separate work.
 
 ## APIs, infrastructure and automation
