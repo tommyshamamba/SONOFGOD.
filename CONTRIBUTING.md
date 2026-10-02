@@ -9,6 +9,6 @@ Start with [the project catalog](docs/PROJECT_CATALOG.md). Each application owns
 5. Run the affected application's tests or build. Record the command and result in your change description. Use mock providers or isolated test accounts; never production funds or customer records.
 6. Update setup documentation when commands, dependencies or behavior change.
 
-The root GitHub Actions workflow runs source checks, banking tests, the Trace API health test and the storefront build. A passing workflow does not verify deployments, financial correctness, security or production readiness.
+The root GitHub Actions workflow runs source checks, application and PostgreSQL integration tests, frontend builds, real ONNX inference, six browser journeys, container smoke checks, Terraform validation, dependency audits and isolated legacy regression tests. See [current verification evidence](docs/VERIFICATION.md) for observed results and the limits of each check. A passing workflow does not certify production readiness.
 
 Use separate pull requests for unrelated applications. Do not rewrite project ownership, add performance metrics or claim production use without evidence. Demo credentials and generated data must remain clearly identified as such.

@@ -1,382 +1,104 @@
 # Blockchain API Service
 
-For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+A Node.js API and React dashboard for accounts, API keys, rate limits and blockchain queries. The default local demonstration returns labeled, deterministic blockchain data. Transaction broadcasting is disabled.
 
-A blockchain API prototype with backend, frontend and infrastructure examples. Provider integrations and deployment require configuration and validation. This repository does not establish production readiness or commercial usage.
+See the [local demo guide](../../docs/LOCAL_DEMOS.md) and [verification results](../../docs/VERIFICATION.md).
 
-## Business Model
+## Run locally
 
-This service enables others to use blockchain technology by providing:
-- **Simple REST API** for blockchain operations
-- **Multi-chain support** (Ethereum, Polygon, Arbitrum, Optimism)
-- **API key authentication** with rate limiting
-- **Developer dashboard** for key management
-- **Usage analytics** and monitoring
+Use Node.js 24.19 or later in the 24.x line. From this directory:
 
-**Revenue Streams:**
-- Tiered API pricing (free, pro, enterprise)
-- Usage-based billing (per request)
-- Premium features (dedicated nodes, priority support)
-- White-label solutions for enterprises
-
-## Features
-
-- **Multi-chain support**: Ethereum, Polygon, Arbitrum, Optimism
-- **RESTful API**: Simple HTTP endpoints for blockchain operations
-- **Authentication**: JWT-based auth with API key management
-- **Rate limiting**: Redis-based rate limiting per API key
-- **Developer dashboard**: React-based UI for key management
-- **Kubernetes-ready**: Complete K8s manifests with HPA
-- **Docker support**: Docker Compose for local development
-
-## Project Structure
-
-```
-blockchain-api-service/
-├── backend/              # Node.js API service
-│   ├── server.js
-│   ├── package.json
-│   ├── Dockerfile
-│   └── .env.example
-├── frontend/             # React dashboard
-│   ├── src/
-│   ├── public/
-│   ├── package.json
-│   └── Dockerfile
-├── k8s/                  # Kubernetes manifests
-│   ├── backend-deployment.yaml
-│   ├── backend-service.yaml
-│   ├── frontend-deployment.yaml
-│   ├── frontend-service.yaml
-│   ├── redis-deployment.yaml
-│   ├── redis-service.yaml
-│   ├── configmap.yaml
-│   ├── secret.yaml
-│   └── hpa.yaml
-├── docker-compose.yml
-└── README.md
+```sh
+npm --prefix backend ci
+npm --prefix frontend ci
+npm --prefix frontend run build
 ```
 
-## API Endpoints
+In PowerShell:
 
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-- `POST /api/keys` - Create API key
-- `GET /api/keys` - List API keys
-- `DELETE /api/keys/:keyId` - Revoke API key
-
-### Blockchain Operations
-- `GET /api/v1/:chain/balance/:address` - Get wallet balance
-- `GET /api/v1/:chain/nonce/:address` - Get transaction count
-- `GET /api/v1/:chain/block/:blockNumber` - Get block information
-- `GET /api/v1/:chain/transaction/:txHash` - Get transaction details
-- `GET /api/v1/:chain/gas-price` - Get current gas price
-- `POST /api/v1/:chain/broadcast` - Broadcast signed transaction
-- `POST /api/v1/:chain/estimate-gas` - Estimate gas for transaction
-- `GET /api/v1/chains` - List supported chains
-- `GET /api/v1/usage` - Get API usage statistics
-
-## Quick Start
-
-### Local Development with Docker Compose
-
-1. **Clone and navigate:**
-```bash
-cd C:\Users\USER\CascadeProjects\blockchain-api-service
+```powershell
+$env:DEMO_MODE = 'true'
+npm --prefix backend start
 ```
 
-2. **Start services:**
-```bash
-docker-compose up --build
+Open http://localhost:3300. Register a synthetic account, create a key and copy the full secret once; use that key to query the demo. The backend serves the built dashboard and API on the same origin. Development commands and all six application links are in the local guide.
+
+## Docker Compose
+
+```sh
+docker compose up --build -d --wait
 ```
 
-3. **Access the application:**
-- Dashboard: http://localhost
-- API: http://localhost:3000
+- Dashboard: http://localhost:8081
+- Direct API: http://localhost:3301
+- API readiness: http://localhost:3301/ready
 
-4. **Register and create API key:**
-- Open dashboard in browser
-- Register account
-- Create API key
-- Test API endpoints
+The Compose project binds published ports to this computer, uses Redis for rate limiting, and stores JSON data in the `blockchain-data` named volume. The frontend proxies API requests to the backend. It waits for backend readiness; the backend waits for Redis readiness. Run `docker compose down` to stop; keep the named volume to preserve accounts and keys.
 
-### Manual Setup
+Both Compose files in this portfolio use distinct host ports. GitHub Actions builds and starts the containers, then checks the dashboard and proxied API. A live Kubernetes rollout remains unverified. For local containers, Docker Desktop's Linux engine must be running.
 
-**Backend:**
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Edit .env with your configuration
-npm run dev
-```
+## Persistence and crash recovery
 
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm start
-```
+Users, password hashes, hashed API keys, revocations and usage counters live in `DATA_FILE` (default `backend/data/store.json`). Writes flush a temporary file and atomically replace the JSON snapshot. No raw API key is stored.
 
-## Kubernetes Deployment
+The adjacent `.lock.sqlite` file supplies an OS-backed exclusive lock. A second writer fails immediately; a terminated writer releases the lock through the operating system. The mutex file stays on disk permanently. **Do not delete `.lock.sqlite` to unlock a store:** an active process may still hold it, and deletion can create independent locks. Restarting is sufficient after a crash.
 
-### Prerequisites
-- Kubernetes cluster (Minikube, Kind, or cloud provider)
-- kubectl CLI
-- Docker registry access
+Use one backend replica and a local, durable filesystem. Network filesystems, multi-host shared volumes and horizontal backend scaling are unsupported. Move account/key storage to a transactional shared database before scaling. Keep the entire data volume in backups, and test restores independently.
 
-### Build Images
+### Upgrading an older checkout
 
-```bash
-# Build backend image
-docker build -t blockchain-api-backend:latest ./backend
+Older code created a PID file at `DATA_FILE.lock`. The new version refuses that legacy lock instead of guessing whether an older process is still writing. Stop every old service/container that uses the store, back up the JSON file, and verify the recorded PID/process is gone. Only then remove the legacy `.lock` file. Keep the JSON snapshot and the new `.lock.sqlite` file. Existing container volumes must be writable by the new backend's UID/GID `1000:1000`; adjust ownership while stopped if an older root-owned container created the volume.
 
-# Build frontend image
-docker build -t blockchain-api-frontend:latest ./frontend
+## Kubernetes local example
 
-# If using Minikube
-minikube image load blockchain-api-backend:latest
-minikube image load blockchain-api-frontend:latest
-```
+Start a local Minikube cluster, then build and load explicitly tagged images:
 
-### Deploy to Cluster
-
-```bash
-# Apply all manifests
+```sh
+docker build -t blockchain-api-backend:local ./backend
+docker build -t blockchain-api-frontend:local ./frontend
+minikube image load blockchain-api-backend:local
+minikube image load blockchain-api-frontend:local
 kubectl apply -f k8s/
-
-# Or apply individually
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/redis-deployment.yaml
-kubectl apply -f k8s/redis-service.yaml
-kubectl apply -f k8s/backend-deployment.yaml
-kubectl apply -f k8s/backend-service.yaml
-kubectl apply -f k8s/frontend-deployment.yaml
-kubectl apply -f k8s/frontend-service.yaml
-kubectl apply -f k8s/hpa.yaml
-```
-
-### Verify Deployment
-
-```bash
-# Check pods
-kubectl get pods
-
-# Check services
-kubectl get services
-
-# Check HPA
-kubectl get hpa
-
-# Access frontend (Minikube)
+kubectl rollout status deployment/blockchain-api-backend --timeout=180s
+kubectl rollout status deployment/blockchain-api-frontend --timeout=180s
 minikube service blockchain-api-frontend
 ```
 
-## API Usage Examples
+The manifests use `imagePullPolicy: IfNotPresent`, one backend replica, `Recreate` updates and a persistent volume claim. The HPA is capped at one backend replica because file storage is local. Sample secrets are demonstration values. For registry deployments, use your own registry image tags/digests and secret management. The example is not a verified production deployment.
 
-### Get Balance
+## API
 
-```bash
-curl -X GET "http://localhost:3000/api/v1/ethereum/balance/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb" \
-  -H "X-API-Key: your-api-key-here"
+Authentication: `POST /api/auth/register`, `POST /api/auth/login`.
+
+API key management uses `Authorization: Bearer <token>`: `POST /api/keys`, `GET /api/keys`, `DELETE /api/keys/:keyId`. Keys are scoped to their owner; only the creation response contains the full secret.
+
+Blockchain endpoints use `X-API-Key: <full secret>`:
+
+- `GET /api/v1/:chain/balance/:address`
+- `GET /api/v1/:chain/nonce/:address`
+- `GET /api/v1/:chain/block/:blockNumber`
+- `GET /api/v1/:chain/transaction/:txHash`
+- `GET /api/v1/:chain/gas-price`
+- `POST /api/v1/:chain/estimate-gas`
+- `POST /api/v1/:chain/broadcast` (disabled by default)
+- `GET /api/v1/usage`
+
+`GET /api/v1/chains` lists configured chains without exposing RPC URLs. `/health` reports the mode; `/ready` checks dependencies. Provider failures return bounded errors, and a Redis outage fails closed with HTTP 503.
+
+## Live configuration and limits
+
+`DEMO_MODE=true` makes no blockchain RPC calls. For live mode configure the four RPC URLs, Redis, durable `DATA_FILE`, exact allowed `CORS_ORIGIN` values and a strong random `JWT_SECRET`. Production rejects demonstration mode and incomplete settings. Broadcasting additionally requires its explicit opt-in. Live provider behavior, real transactions, performance, backups and cloud provisioning are not verified by the local test suite.
+
+The [Terraform directory](terraform/README.md) contains a separately validated infrastructure example. It does not connect the application to every provisioned resource. Billing, paid tiers, transaction submission guarantees and commercial service-level commitments are not implemented.
+
+## Tests
+
+```sh
+npm --prefix backend test
 ```
 
-Response:
-```json
-{
-  "chain": "ethereum",
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-  "balance": "1.234567890123456789",
-  "wei": "1234567890123456789"
-}
-```
-
-### Get Transaction
-
-```bash
-curl -X GET "http://localhost:3000/api/v1/ethereum/transaction/0x123...abc" \
-  -H "X-API-Key: your-api-key-here"
-```
-
-### Broadcast Transaction
-
-```bash
-curl -X POST "http://localhost:3000/api/v1/ethereum/broadcast" \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{"signedTx": "0x..."}'
-```
-
-### Estimate Gas
-
-```bash
-curl -X POST "http://localhost:3000/api/v1/ethereum/estimate-gas" \
-  -H "X-API-Key: your-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-    "from": "0x123...",
-    "value": "0.1",
-    "data": "0x..."
-  }'
-```
-
-## Configuration
-
-### Environment Variables
-
-**Backend:**
-- `PORT` - Server port (default: 3000)
-- `JWT_SECRET` - JWT signing secret
-- `REDIS_URL` - Redis connection URL
-- `ETH_RPC_URL` - Ethereum RPC endpoint
-- `POLYGON_RPC_URL` - Polygon RPC endpoint
-- `ARBITRUM_RPC_URL` - Arbitrum RPC endpoint
-- `OPTIMISM_RPC_URL` - Optimism RPC endpoint
-
-**Frontend:**
-- `REACT_APP_API_URL` - Backend API URL
-
-### RPC Endpoints
-
-For production, use your own nodes or premium services:
-- **Infura**: https://infura.io
-- **Alchemy**: https://www.alchemy.com
-- **QuickNode**: https://www.quicknode.com
-- **Ankr**: https://www.ankr.com
-
-## Monetization Strategy
-
-### Tiered Pricing
-
-**Free Tier:**
-- 1,000 requests/month
-- Rate limit: 10 requests/minute
-- Community support
-- Public RPC endpoints
-
-**Pro Tier ($49/month):**
-- 100,000 requests/month
-- Rate limit: 100 requests/minute
-- Priority support
-- Dedicated endpoints
-
-**Enterprise ($499/month):**
-- Unlimited requests
-- Custom rate limits
-- Dedicated support
-- Private nodes
-- SLA guarantees
-
-### Usage-Based Pricing
-
-Charge per request beyond included limits:
-- $0.001 per additional request
-- Volume discounts for high usage
-
-### Premium Features
-
-- Dedicated node access: $200/month
-- Historical data access: $100/month
-- Webhook notifications: $50/month
-- Custom chain support: Custom pricing
-
-## Scaling Considerations
-
-### Horizontal Scaling
-- Backend pods auto-scale based on CPU/memory (HPA configured)
-- Redis for distributed rate limiting
-- Load balancer for frontend
-
-### Vertical Scaling
-- Adjust resource requests/limits in deployments
-- Use larger instance types for high load
-
-### Caching
-- Redis for rate limiting and response caching
-- Consider CDN for static frontend assets
-
-### Monitoring
-- Add Prometheus metrics
-- Set up Grafana dashboards
-- Implement alerting
-
-## Security Best Practices
-
-1. **Use production RPC endpoints** - Don't rely on public nodes
-2. **Rotate JWT secrets** regularly
-3. **Implement proper database** - Replace in-memory storage
-4. **Add HTTPS** - Use TLS certificates in production
-5. **Rate limiting** - Already implemented with Redis
-6. **Input validation** - Add comprehensive validation
-7. **Audit logging** - Log all API calls for compliance
-8. **IP whitelisting** - Add for enterprise customers
-
-## Roadmap
-
-### Phase 1 - MVP (Current)
-- Basic blockchain operations
-- Multi-chain support
-- API key management
-- Developer dashboard
-
-### Phase 2 - Production
-- Database integration (PostgreSQL)
-- Enhanced authentication (OAuth, 2FA)
-- Webhook support
-- Historical data access
-
-### Phase 3 - Enterprise
-- Dedicated nodes
-- Custom chain support
-- White-label solutions
-- Advanced analytics
-
-### Phase 4 - Ecosystem
-- SDK libraries (JS, Python, Go)
-- Plugin system
-- Marketplace for extensions
-- Partner integrations
-
-## Troubleshooting
-
-**Redis connection failed:**
-```bash
-# Check Redis pod
-kubectl logs blockchain-api-redis-xxxxx
-
-# Check Redis service
-kubectl get service blockchain-api-redis
-```
-
-**RPC endpoint errors:**
-- Verify RPC URLs in ConfigMap
-- Check node health
-- Consider using premium RPC services
-
-**Rate limit errors:**
-- Check Redis connection
-- Verify rate limiter configuration
-- Review API key usage
-
-## Support
-
-For issues and questions:
-- Check documentation
-- Review API logs
-- Test with public RPC endpoints first
+The suite checks authentication, key ownership, persistence, rate limiter/provider failures, crash locking and configuration. The forced-process-termination case requires permission to launch child processes; Windows application sandboxes may block it. GitHub Actions runs the complete suite on Linux.
 
 ## License
 
-Proprietary - All rights reserved
-
-## Acknowledgments
-
-Built with:
-- Express.js
-- Ethers.js
-- React
-- Kubernetes
-- Redis
+Original owned code follows the repository's [MIT license](../../LICENSE). See [third-party notices](../../THIRD_PARTY_NOTICES.md) for dependency exclusions.

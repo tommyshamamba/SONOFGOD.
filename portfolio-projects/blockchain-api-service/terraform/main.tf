@@ -1,29 +1,10 @@
 terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
   backend "s3" {
     bucket         = "blockchain-api-terraform-state"
     key            = "blockchain-api-service/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "blockchain-api-terraform-locks"
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = "blockchain-api-service"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-    }
   }
 }
 
@@ -35,15 +16,15 @@ module "vpc" {
   name = "${var.project_name}-vpc"
   cidr = var.vpc_cidr
 
-  azs              = var.availability_zones
-  private_subnets  = var.private_subnet_cidrs
-  public_subnets   = var.public_subnet_cidrs
+  azs             = var.availability_zones
+  private_subnets = var.private_subnet_cidrs
+  public_subnets  = var.public_subnet_cidrs
 
   enable_nat_gateway     = true
   single_nat_gateway     = true
   one_nat_gateway_per_az = false
 
-  enable_vpn_gateway = false
+  enable_vpn_gateway   = false
   enable_dns_hostnames = true
   enable_dns_support   = true
 
@@ -145,18 +126,18 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_elasticache_replication_group" "redis" {
-  replication_group_id          = "${var.project_name}-redis"
-  replication_group_description = "Redis for blockchain API service"
-  node_type                     = var.redis_node_type
-  number_cache_clusters         = var.redis_num_nodes
-  engine                        = "redis"
-  engine_version                = "7.0"
-  parameter_group_name          = "default.redis7"
-  subnet_group_name             = aws_elasticache_subnet_group.redis.name
-  security_group_ids            = [aws_security_group.redis.id]
+  replication_group_id = "${var.project_name}-redis"
+  description          = "Redis for blockchain API service"
+  node_type            = var.redis_node_type
+  num_cache_clusters   = var.redis_num_nodes
+  engine               = "redis"
+  engine_version       = "7.0"
+  parameter_group_name = "default.redis7"
+  subnet_group_name    = aws_elasticache_subnet_group.redis.name
+  security_group_ids   = [aws_security_group.redis.id]
 
   automatic_failover_enabled = false
-  multi_az_enabled          = false
+  multi_az_enabled           = false
 
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
@@ -221,14 +202,14 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.database.id]
 
-  multi_az               = false
-  publicly_accessible    = false
-  skip_final_snapshot    = false
+  multi_az                  = false
+  publicly_accessible       = false
+  skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-database-final-snapshot"
 
   backup_retention_period = 7
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "Mon:04:00-Mon:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Mon:04:00-Mon:05:00"
 
   performance_insights_enabled = true
 

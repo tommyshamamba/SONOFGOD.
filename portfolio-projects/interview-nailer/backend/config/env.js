@@ -25,7 +25,7 @@ function loadConfig(env = process.env) {
   if (production && aiMode === 'mock' && env.ALLOW_MOCK_AI !== 'true') {
     throw new Error('Set ALLOW_MOCK_AI=true explicitly to deploy a labeled mock demo.');
   }
-  const clientUrls = [env.CLIENT_URL || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5000,http://127.0.0.1:5000', env.RENDER_EXTERNAL_URL || '']
+  const clientUrls = [env.CLIENT_URL || 'http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5000,http://127.0.0.1:5000', env.RENDER_EXTERNAL_URL || '']
     .join(',').split(',').map((value) => value.trim()).filter(Boolean);
   for (const origin of clientUrls) {
     const parsed = new URL(origin);

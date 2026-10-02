@@ -5,7 +5,7 @@ output "vpc_id" {
 
 output "vpc_cidr" {
   description = "VPC CIDR block"
-  value       = module.vpc.vpc_cidr
+  value       = module.vpc.vpc_cidr_block
 }
 
 output "private_subnet_ids" {
@@ -19,8 +19,8 @@ output "public_subnet_ids" {
 }
 
 output "eks_cluster_id" {
-  description = "EKS cluster ID"
-  value       = module.eks.cluster_id
+  description = "EKS cluster name (legacy output name retained for compatibility)"
+  value       = module.eks.cluster_name
 }
 
 output "eks_cluster_endpoint" {
@@ -85,5 +85,5 @@ output "cloudwatch_log_group_frontend" {
 
 output "kubeconfig_command" {
   description = "Command to configure kubectl"
-  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_id} --region ${var.aws_region}"
+  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.aws_region}"
 }

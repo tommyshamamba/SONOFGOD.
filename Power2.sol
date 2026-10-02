@@ -1,15 +1,15 @@
 // file: contracts/Power.sol
 // SPDX-License-Identifier: MIT
-// Contract finalized by tommyshamamba on 2025-11-06 13:17:09
+// Experimental executor. Local lender regression tests: legacy-tests/README.md.
 pragma solidity ^0.8.22;
 
 // --- OpenZeppelin Imports ---
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts-upgradeable/v5.0.2/contracts/proxy/utils/UUPSUpgradeable.sol";
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts-upgradeable/v5.0.2/contracts/access/OwnableUpgradeable.sol";
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts-upgradeable/v5.0.2/contracts/utils/PausableUpgradeable.sol";
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts-upgradeable/v5.0.2/contracts/utils/ReentrancyGuardUpgradeable.sol";
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.0.2/contracts/token/ERC20/IERC20.sol";
-import "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts-upgradeable/v5.0.2/contracts/utils/introspection/ERC165Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 
 // --- Libraries ---
 library SafeERC20Compat {
@@ -45,7 +45,7 @@ interface IUniswapV3Pool { function flash(address recipient, uint256 amount0, ui
 interface IUniswapV3FlashCallback { function uniswapV3FlashCallback(uint256 fee0, uint256 fee1, bytes calldata data) external; }
 interface ISwapRouterV3 { struct ExactInputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 deadline; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; } struct ExactInputParams { bytes path; address recipient; uint256 deadline; uint256 amountIn; uint256 amountOutMinimum; } function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256); function exactInput(ExactInputParams calldata params) external payable returns (uint256); }
 interface IUniswapV2Router { function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) external returns (uint256[] memory); }
-interface IDODO { function flashLoan(uint256 baseAmount, uint256 quoteAmount, address assetTo, bytes calldata data) external; }
+interface IDODO { function _BASE_TOKEN_() external view returns (address); function _QUOTE_TOKEN_() external view returns (address); function flashLoan(uint256 baseAmount, uint256 quoteAmount, address assetTo, bytes calldata data) external; }
 interface IDODOCallee { function dodoFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external; }
 interface ICurvePool { function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external returns (uint256); }
 interface IWETH { function withdraw(uint256) external; function deposit() external payable; function balanceOf(address) external view returns (uint256); }
@@ -103,7 +103,23 @@ contract Power is UUPSUpgradeable, OwnableUpgradeable, PausableUpgradeable, Reen
     error RouterNotAllowed(); error PoolNotAllowed(); error BadPayload(); error InvalidVersion();
     error ZeroProfitNotAllowed(); error InvalidDeadline(); error InvalidUpgrade(); error NotAuthorized();
 
-    uint256[45] private __gap;
+    // Five slots consumed from the original upgrade storage gap. This state binds
+    // exactly one synchronous callback to an owner-approved request.
+    enum LoanPhase { IDLE, AWAITING_CALLBACK, EXECUTING_CALLBACK, COMPLETED }
+    struct ActiveLoan {
+        address lender;
+        FlashloanProvider provider;
+        LoanPhase phase;
+        bool borrowedFirst;
+        address asset;
+        uint256 amount;
+        bytes32 dataHash;
+        uint256 balanceBefore;
+    }
+    ActiveLoan private _activeLoan;
+    uint256[40] private __gap;
+    error UnexpectedCallback();
+    error MissingCallback();
 
     constructor() {
         _disableInitializers();
@@ -165,38 +181,134 @@ contract Power is UUPSUpgradeable, OwnableUpgradeable, PausableUpgradeable, Reen
 
     function requestFlashLoan(FlashloanProvider p, address token, uint256 amount, bytes calldata params, uint256 deadline) public onlyOwner whenNotPaused nonReentrant {
         if (deadline > block.timestamp + 3600 || block.timestamp > deadline) revert InvalidDeadline();
-        if (token == address(0)) revert("token=0");
-        if (amount == 0) revert("amount=0");
+        require(token != address(0) && amount > 0, "invalid loan");
+        if (_activeLoan.phase != LoanPhase.IDLE) revert UnexpectedCallback();
+        address lender;
+        bytes memory callbackData = params;
+        bool borrowedFirst;
+        if (p == FlashloanProvider.AAVE) lender = AAVE_POOL;
+        else if (p == FlashloanProvider.BALANCER) lender = BALANCER_VAULT;
+        else if (p == FlashloanProvider.UNISWAP) {
+            bytes memory inner;
+            (lender, inner) = abi.decode(params, (address, bytes));
+            if (!allowedPools[lender]) revert PoolNotAllowed();
+            address t0 = IUniswapV3Pool(lender).token0();
+            address t1 = IUniswapV3Pool(lender).token1();
+            require(token == t0 || token == t1, "uni:token!pool");
+            borrowedFirst = token == t0;
+            callbackData = abi.encode(borrowedFirst ? amount : 0, borrowedFirst ? 0 : amount, inner);
+        } else {
+            address declaredBase;
+            bytes memory inner;
+            (lender, declaredBase, inner) = abi.decode(params, (address, address, bytes));
+            if (!allowedPools[lender]) revert PoolNotAllowed();
+            address base = IDODO(lender)._BASE_TOKEN_();
+            address quote = IDODO(lender)._QUOTE_TOKEN_();
+            require(declaredBase == base && (token == base || token == quote), "dodo:token!pool");
+            borrowedFirst = token == base;
+            // Carry the borrowed asset, which can be the pool's quote token.
+            callbackData = abi.encode(lender, token, inner);
+        }
+        _activeLoan = ActiveLoan(lender, p, LoanPhase.AWAITING_CALLBACK, borrowedFirst,
+            token, amount, keccak256(callbackData), IERC20(token).balanceOf(address(this)));
         emit FlashloanRequested(p, token, amount);
-        if (p == FlashloanProvider.AAVE) { IAavePool(AAVE_POOL).flashLoanSimple(address(this), token, amount, params, 0); } 
-        else if (p == FlashloanProvider.BALANCER) { address[] memory tokens = new address[](1); tokens[0] = token; uint256[] memory amounts = new uint256[](1); amounts[0] = amount; IBalancerVault(BALANCER_VAULT).flashLoan(address(this), tokens, amounts, params); } 
-        else if (p == FlashloanProvider.UNISWAP) { (address pool, bytes memory inner) = abi.decode(params, (address, bytes)); if (!allowedPools[pool]) revert PoolNotAllowed(); address t0 = IUniswapV3Pool(pool).token0(); address t1 = IUniswapV3Pool(pool).token1(); if (token != t0 && token != t1) revert("uni:token!pool"); uint256 amount0 = token == t0 ? amount : 0; uint256 amount1 = token == t1 ? amount : 0; bytes memory cbData = abi.encode(amount0, amount1, inner); IUniswapV3Pool(pool).flash(address(this), amount0, amount1, cbData); } 
-        else if (p == FlashloanProvider.DODO) { (address dodoPool, address baseToken, bytes memory inner) = abi.decode(params, (address, address, bytes)); if (!allowedPools[dodoPool]) revert PoolNotAllowed(); bytes memory cbData = abi.encode(dodoPool, baseToken, inner); IDODO(dodoPool).flashLoan(baseToken == token ? amount : 0, baseToken != token ? amount : 0, address(this), cbData); }
+        if (p == FlashloanProvider.AAVE) {
+            IAavePool(lender).flashLoanSimple(address(this), token, amount, callbackData, 0);
+        } else if (p == FlashloanProvider.BALANCER) {
+            address[] memory tokens = new address[](1); tokens[0] = token;
+            uint256[] memory amounts = new uint256[](1); amounts[0] = amount;
+            IBalancerVault(lender).flashLoan(address(this), tokens, amounts, callbackData);
+        } else if (p == FlashloanProvider.UNISWAP) {
+            IUniswapV3Pool(lender).flash(address(this), borrowedFirst ? amount : 0, borrowedFirst ? 0 : amount, callbackData);
+        } else {
+            IDODO(lender).flashLoan(borrowedFirst ? amount : 0, borrowedFirst ? 0 : amount, address(this), callbackData);
+        }
+        if (_activeLoan.phase != LoanPhase.COMPLETED) revert MissingCallback();
+        if (p == FlashloanProvider.AAVE) IERC20(token).forceApprove(lender, 0);
+        require(IERC20(token).balanceOf(address(this)) >= _activeLoan.balanceBefore, "loan consumed reserves");
+        delete _activeLoan;
     }
 
-    function executeOperation(address asset, uint256 amount, uint256 premium, address, bytes calldata params) external nonReentrant returns (bool) { if (msg.sender != AAVE_POOL) revert NotAave(); _dispatchAndProcessCalldata(asset, amount, premium, params); IERC20(asset).safeTransfer(AAVE_POOL, amount + premium); return true; }
-    function receiveFlashLoan(address[] calldata tokens, uint256[] calldata amounts, uint256[] calldata fees, bytes calldata userData) external override nonReentrant { if (msg.sender != BALANCER_VAULT) revert NotBalancer(); if (tokens.length != 1) revert("single-only"); _dispatchAndProcessCalldata(tokens[0], amounts[0], fees[0], userData); IERC20(tokens[0]).safeTransfer(BALANCER_VAULT, amounts[0] + fees[0]); }
-    function uniswapV3FlashCallback(uint256 fee0, uint256 fee1, bytes calldata data) external override nonReentrant { (uint256 amount0, uint256 amount1, bytes memory inner) = abi.decode(data, (uint256, uint256, bytes)); address pool = msg.sender; if (!allowedPools[pool]) revert InvalidUniV3Caller(); address asset; uint256 amount; uint256 fee; if (amount0 > 0) { asset = IUniswapV3Pool(pool).token0(); amount = amount0; fee = fee0; } else { asset = IUniswapV3Pool(pool).token1(); amount = amount1; fee = fee1; } _dispatchAndProcessMemory(asset, amount, fee, inner); IERC20(asset).safeTransfer(pool, amount + fee); }
-    function dodoFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external override nonReentrant { (address dodoPool, address asset, bytes memory inner) = abi.decode(data, (address, address, bytes)); if (sender != address(this) || msg.sender != dodoPool || !allowedPools[dodoPool]) revert InvalidDODOCaller(); uint256 borrowed = baseAmount > 0 ? baseAmount : quoteAmount; uint256 bps = dodoFeeBps[dodoPool]; uint256 fee = (bps > 0) ? (borrowed * bps + FEE_BPS_DENOMINATOR - 1) / FEE_BPS_DENOMINATOR : 0; _dispatchAndProcessMemory(asset, borrowed, fee, inner); IERC20(asset).safeTransfer(msg.sender, borrowed + fee); }
+    // The request keeps nonReentrant active throughout the loan. A callback uses
+    // this one-use commitment instead of attempting to enter the same guard.
+    function _beginCallback(FlashloanProvider p, address asset, uint256 amount, bytes calldata data) private {
+        ActiveLoan storage loan = _activeLoan;
+        if (loan.phase != LoanPhase.AWAITING_CALLBACK || msg.sender != loan.lender || p != loan.provider
+            || asset != loan.asset || amount != loan.amount || keccak256(data) != loan.dataHash) revert UnexpectedCallback();
+        loan.phase = LoanPhase.EXECUTING_CALLBACK;
+        require(IERC20(asset).balanceOf(address(this)) >= loan.balanceBefore + amount, "loan not received");
+    }
+
+    function executeOperation(address asset, uint256 amount, uint256 premium, address initiator, bytes calldata params) external returns (bool) {
+        if (msg.sender != AAVE_POOL || initiator != address(this)) revert NotAave();
+        _beginCallback(FlashloanProvider.AAVE, asset, amount, params);
+        _dispatchAndProcessCalldata(asset, amount, premium, params);
+        // Aave pulls principal plus premium after this callback returns.
+        IERC20(asset).forceApprove(AAVE_POOL, amount + premium);
+        _activeLoan.phase = LoanPhase.COMPLETED;
+        return true;
+    }
+
+    function receiveFlashLoan(address[] calldata tokens, uint256[] calldata amounts, uint256[] calldata fees, bytes calldata userData) external override {
+        if (msg.sender != BALANCER_VAULT) revert NotBalancer();
+        require(tokens.length == 1 && amounts.length == 1 && fees.length == 1, "single-only");
+        _beginCallback(FlashloanProvider.BALANCER, tokens[0], amounts[0], userData);
+        _dispatchAndProcessCalldata(tokens[0], amounts[0], fees[0], userData);
+        IERC20(tokens[0]).safeTransfer(BALANCER_VAULT, amounts[0] + fees[0]);
+        _activeLoan.phase = LoanPhase.COMPLETED;
+    }
+
+    function uniswapV3FlashCallback(uint256 fee0, uint256 fee1, bytes calldata data) external override {
+        (uint256 amount0, uint256 amount1, bytes memory inner) = abi.decode(data, (uint256, uint256, bytes));
+        address asset = _activeLoan.asset;
+        uint256 amount = _activeLoan.amount;
+        bool first = _activeLoan.borrowedFirst;
+        if (amount0 != (first ? amount : 0) || amount1 != (first ? 0 : amount)
+            || (first ? fee1 : fee0) != 0) revert InvalidUniV3Caller();
+        _beginCallback(FlashloanProvider.UNISWAP, asset, amount, data);
+        uint256 fee = first ? fee0 : fee1;
+        _dispatchAndProcessMemory(asset, amount, fee, inner);
+        IERC20(asset).safeTransfer(msg.sender, amount + fee);
+        _activeLoan.phase = LoanPhase.COMPLETED;
+    }
+
+    // DODO V2 public, private and stable pools use these protocol callback names.
+    function DVMFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external { _dodoCallback(sender, baseAmount, quoteAmount, data); }
+    function DPPFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external { _dodoCallback(sender, baseAmount, quoteAmount, data); }
+    function DSPFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external { _dodoCallback(sender, baseAmount, quoteAmount, data); }
+    function dodoFlashLoanCall(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) external override { _dodoCallback(sender, baseAmount, quoteAmount, data); }
+
+    function _dodoCallback(address sender, uint256 baseAmount, uint256 quoteAmount, bytes calldata data) private {
+        (address lender, address asset, bytes memory inner) = abi.decode(data, (address, address, bytes));
+        uint256 amount = _activeLoan.amount;
+        bool first = _activeLoan.borrowedFirst;
+        if (sender != address(this) || lender != msg.sender || baseAmount != (first ? amount : 0)
+            || quoteAmount != (first ? 0 : amount)) revert InvalidDODOCaller();
+        _beginCallback(FlashloanProvider.DODO, asset, amount, data);
+        uint256 fee = (amount * dodoFeeBps[lender] + FEE_BPS_DENOMINATOR - 1) / FEE_BPS_DENOMINATOR;
+        _dispatchAndProcessMemory(asset, amount, fee, inner);
+        IERC20(asset).safeTransfer(lender, amount + fee);
+        _activeLoan.phase = LoanPhase.COMPLETED;
+    }
 
     function _dispatchAndProcessCalldata(address asset, uint256 amount, uint256 fee, bytes calldata payload) internal {
         if (payload.length < 4) revert BadPayload();
-        bytes4 sel; assembly { sel := shr(224, calldataload(payload.offset)) }
-        if (sel == ARB_SELECTOR) { ArbitrageOpportunity memory opp = abi.decode(payload[4:], (ArbitrageOpportunity)); if (opp.version != CONTRACT_VERSION) revert InvalidVersion(); if (opp.minOutput == 0) revert ZeroProfitNotAllowed(); _arb(asset, amount, fee, opp); } 
-        else if (sel == LIQUIDATE_SELECTOR) { LiquidationOpportunity memory oppL = abi.decode(payload[4:], (LiquidationOpportunity)); if (oppL.minProfit == 0) revert ZeroProfitNotAllowed(); _liquidate(asset, amount, fee, oppL); } 
+        bytes4 sel; assembly { sel := calldataload(payload.offset) }
+        if (sel == ARB_SELECTOR) { ArbitrageOpportunity memory opp = abi.decode(payload[4:], (ArbitrageOpportunity)); if (opp.version != CONTRACT_VERSION) revert InvalidVersion(); if (opp.minOutput == 0) revert ZeroProfitNotAllowed(); _arb(asset, amount, fee, opp); }
+        else if (sel == LIQUIDATE_SELECTOR) { LiquidationOpportunity memory oppL = abi.decode(payload[4:], (LiquidationOpportunity)); if (oppL.minProfit == 0) revert ZeroProfitNotAllowed(); _liquidate(asset, amount, fee, oppL); }
         else { revert BadPayload(); }
     }
 
     function _dispatchAndProcessMemory(address asset, uint256 amount, uint256 fee, bytes memory payload) internal {
         if (payload.length < 4) revert BadPayload();
-        bytes4 sel; assembly { sel := shr(224, mload(add(payload, 0x20))) }
-        if (sel == ARB_SELECTOR) { bytes memory tail = _decodeAfterSelectorMem(payload); ArbitrageOpportunity memory opp = abi.decode(tail, (ArbitrageOpportunity)); if (opp.version != CONTRACT_VERSION) revert InvalidVersion(); if (opp.minOutput == 0) revert ZeroProfitNotAllowed(); _arb(asset, amount, fee, opp); } 
-        else if (sel == LIQUIDATE_SELECTOR) { bytes memory tail2 = _decodeAfterSelectorMem(payload); LiquidationOpportunity memory oppL = abi.decode(tail2, (LiquidationOpportunity)); if (oppL.minProfit == 0) revert ZeroProfitNotAllowed(); _liquidate(asset, amount, fee, oppL); } 
+        bytes4 sel; assembly { sel := mload(add(payload, 0x20)) }
+        if (sel == ARB_SELECTOR) { bytes memory tail = _decodeAfterSelectorMem(payload); ArbitrageOpportunity memory opp = abi.decode(tail, (ArbitrageOpportunity)); if (opp.version != CONTRACT_VERSION) revert InvalidVersion(); if (opp.minOutput == 0) revert ZeroProfitNotAllowed(); _arb(asset, amount, fee, opp); }
+        else if (sel == LIQUIDATE_SELECTOR) { bytes memory tail2 = _decodeAfterSelectorMem(payload); LiquidationOpportunity memory oppL = abi.decode(tail2, (LiquidationOpportunity)); if (oppL.minProfit == 0) revert ZeroProfitNotAllowed(); _liquidate(asset, amount, fee, oppL); }
         else { revert BadPayload(); }
     }
 
     function _decodeAfterSelectorMem(bytes memory payload) internal pure returns (bytes memory out_) { uint256 len = payload.length - 4; out_ = new bytes(len); for (uint256 i = 0; i < len; i++) { out_[i] = payload[i + 4]; } }
-    
+
     function _arb(address asset, uint256 amount, uint256 premium, ArbitrageOpportunity memory opp) internal {
         if (block.timestamp > opp.deadline) revert InvalidDeadline();
         if (opp.dex == DexTag.UNISWAP_V3) _execUniV3Arb(asset, amount, opp);
@@ -206,34 +318,39 @@ contract Power is UUPSUpgradeable, OwnableUpgradeable, PausableUpgradeable, Reen
         else if (opp.dex == DexTag.CURVE) _execCurveArb(amount, opp);
         else revert("dex");
         uint256 bal = IERC20(asset).balanceOf(address(this));
-        if (bal < amount + premium) revert("profit");
-        uint256 profit = bal - (amount + premium);
+        uint256 reserved = _activeLoan.balanceBefore + amount + premium;
+        if (bal <= reserved) revert("profit");
+        uint256 profit = bal - reserved;
         if (profit > 0) { emit ArbitrageExecuted(asset, amount, profit); _autoPayout(asset, profit); }
     }
 
     function _liquidate(address flashAsset, uint256 amount, uint256 premium, LiquidationOpportunity memory opp) internal {
         if (block.timestamp > opp.deadline) revert InvalidDeadline();
         if (flashAsset != opp.debtAsset) revert("liq:asset!=debt");
+        require(opp.collateralAsset != opp.debtAsset && opp.debtToCover > 0 && opp.debtToCover <= amount, "liq:invalid debt");
+        uint256 collateralBefore = IERC20(opp.collateralAsset).balanceOf(address(this));
         IERC20(opp.debtAsset).safeIncreaseAllowance(AAVE_POOL, amount);
         IAavePool(AAVE_POOL).liquidationCall(opp.collateralAsset, opp.debtAsset, opp.user, opp.debtToCover, false);
         uint256 curDebtAllow = IERC20(opp.debtAsset).allowance(address(this), AAVE_POOL);
         if (curDebtAllow > 0) IERC20(opp.debtAsset).safeDecreaseAllowance(AAVE_POOL, curDebtAllow);
-        uint256 collBal = IERC20(opp.collateralAsset).balanceOf(address(this));
+        // Only collateral received from this liquidation may fund its repayment.
+        // An idle reserve must not make an otherwise losing liquidation succeed.
+        uint256 collBal = IERC20(opp.collateralAsset).balanceOf(address(this)) - collateralBefore;
         if (collBal > 0) {
             if (opp.swapPath.length < 2 || opp.swapPath[0] != opp.collateralAsset || opp.swapPath[opp.swapPath.length-1] != opp.debtAsset) revert("liq:path-mismatch");
             uint256 debtBalance = IERC20(opp.debtAsset).balanceOf(address(this));
-            uint256 requiredDebt = amount + premium + opp.minProfit;
+            uint256 requiredDebt = _activeLoan.balanceBefore + amount + premium + opp.minProfit;
             uint256 minDebtOut = (debtBalance >= requiredDebt) ? 0 : requiredDebt - debtBalance;
             if (minDebtOut > 0) {
-                if (opp.dex == DexTag.UNISWAP_V3) { if (opp.uniV3Path.length == 0) revert("liq:v3-path-bytes"); _swapUniV3(opp.collateralAsset, collBal, minDebtOut, opp.uniV3Path); } 
-                else if (opp.dex == DexTag.SUSHI || opp.dex == DexTag.CAMELOT) { address router = (opp.dex == DexTag.SUSHI) ? SUSHI_ROUTER : CAMELOT_ROUTER; _swapUniV2Like(router, collBal, minDebtOut, opp.swapPath); } 
+                if (opp.dex == DexTag.UNISWAP_V3) { if (opp.uniV3Path.length == 0) revert("liq:v3-path-bytes"); _swapUniV3(opp.collateralAsset, collBal, minDebtOut, opp.uniV3Path); }
+                else if (opp.dex == DexTag.SUSHI || opp.dex == DexTag.CAMELOT) { address router = (opp.dex == DexTag.SUSHI) ? SUSHI_ROUTER : CAMELOT_ROUTER; _swapUniV2Like(router, collBal, minDebtOut, opp.swapPath); }
                 else { revert("liq:dex"); }
             }
         }
         uint256 debtAfter = IERC20(opp.debtAsset).balanceOf(address(this));
-        if (debtAfter < amount + premium) revert("liq:insolvent");
-        if (debtAfter < amount + premium + opp.minProfit) revert("liq:profit");
-        uint256 liqProfit = debtAfter - (amount + premium);
+        uint256 reserved = _activeLoan.balanceBefore + amount + premium;
+        if (debtAfter < reserved + opp.minProfit) revert("liq:profit");
+        uint256 liqProfit = debtAfter - reserved;
         if (liqProfit > 0) { emit LiquidationExecuted(opp.collateralAsset, opp.debtAsset, liqProfit); _autoPayout(opp.debtAsset, liqProfit); }
     }
 
@@ -247,13 +364,21 @@ contract Power is UUPSUpgradeable, OwnableUpgradeable, PausableUpgradeable, Reen
 
     function _autoPayout(address asset, uint256 amount) internal {
         address payable owner_ = payable(owner());
-        if (asset == WETH_ADDRESS && unwrapWETHOnPayout) { IWETH(WETH_ADDRESS).withdraw(amount); (bool ok, ) = owner_.call{value: amount}(""); require(ok, "ETH sweep failed"); emit Withdraw(address(0), amount); } 
+        if (asset == WETH_ADDRESS && unwrapWETHOnPayout) { IWETH(WETH_ADDRESS).withdraw(amount); (bool ok, ) = owner_.call{value: amount}(""); require(ok, "ETH sweep failed"); emit Withdraw(address(0), amount); }
         else { IERC20(asset).safeTransfer(owner_, amount); emit Withdraw(asset, amount); }
+    }
+
+    // Compatibility with the bots: only idle, owner-controlled residual funds.
+    function withdrawProfit(address token) external onlyOwner nonReentrant {
+        if (_activeLoan.phase != LoanPhase.IDLE) revert UnexpectedCallback();
+        require(token != address(0), "token=0");
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance > 0) _autoPayout(token, balance);
     }
 
     function rescueToken(address token, address to, uint256 amount) external onlyOwner whenPaused nonReentrant { if (to == address(0)) revert("to=0"); IERC20(token).safeTransfer(to, amount); emit Rescued(token, to, amount); }
     function rescueETH(address payable to, uint256 amount) external onlyOwner whenPaused nonReentrant { if (to == address(0)) revert("to=0"); (bool ok, ) = to.call{value: amount}(""); require(ok, "ETH rescue failed"); emit Rescued(address(0), to, amount); }
-    
+
     function buildArbPayload(ArbitrageOpportunity memory opp) public pure returns (bytes memory) { return abi.encodePacked(ARB_SELECTOR, abi.encode(opp)); }
     function buildLiqPayload(LiquidationOpportunity memory opp) public pure returns (bytes memory) { return abi.encodePacked(LIQUIDATE_SELECTOR, abi.encode(opp)); }
 

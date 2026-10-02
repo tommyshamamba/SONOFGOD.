@@ -167,3 +167,44 @@ test('production rejects default secrets and incomplete configuration before ope
   assert.throws(() => readConfig({ NODE_ENV: 'production', JWT_SECRET: 'your-super-secret-jwt-key-change-in-production' }), /JWT_SECRET/);
   assert.throws(() => readConfig({ NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(48) }), /DATA_FILE/);
 });
+
+test('OS storage lock releases after a forced process kill and preserves the committed snapshot', { timeout: 15000 }, async t => {
+  const { spawn } = require('node:child_process');
+  const filename = temporary(t);
+  const program = `const { FileStore } = require(${JSON.stringify(require.resolve('../store'))}); const store = new FileStore(process.argv[1]); store.addUser({ userId: 'crash-test', email: 'crash@example.invalid' }); require('node:fs').writeSync(1, 'READY\\n'); setInterval(() => {}, 1000);`;
+  const child = spawn(process.execPath, ['-e', program, filename], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let exited = false;
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const exit = new Promise((resolve, reject) => {
+    child.once('exit', (...args) => { exited = true; resolve(args); });
+    child.once('error', reject);
+  });
+  // Handle rejection immediately; the readiness promise below reports it too.
+  exit.catch(() => {});
+  t.after(async () => { if (!exited) child.kill('SIGKILL'); await exit.catch(() => {}); });
+  let timer;
+  try {
+    await new Promise((resolve, reject) => {
+      let output = '';
+      child.stdout.on('data', chunk => { output += chunk; if (output.includes('READY')) resolve(); });
+      child.once('error', reject);
+      child.once('exit', () => reject(new Error(`Store worker exited before ready: ${stderr}`)));
+      timer = setTimeout(() => reject(new Error(`Store worker readiness timeout: ${stderr}`)), 10000);
+    });
+  } finally { clearTimeout(timer); }
+  assert.throws(() => new FileStore(filename), { code: 'EEXIST' });
+  assert.equal(child.kill('SIGKILL'), true);
+  await exit;
+  const reopened = new FileStore(filename);
+  try { assert.equal(reopened.findUser('crash@example.invalid').userId, 'crash-test'); }
+  finally { reopened.close(); }
+  assert.throws(() => reopened.addUser({ userId: 'late', email: 'late@example.invalid' }), /closed/);
+});
+
+test('legacy PID locks are never automatically deleted while an older service may be running', t => {
+  const filename = temporary(t);
+  fs.writeFileSync(`${filename}.lock`, String(process.pid));
+  assert.throws(() => new FileStore(filename), { code: 'EEXIST' });
+  assert.equal(fs.readFileSync(`${filename}.lock`, 'utf8'), String(process.pid));
+});

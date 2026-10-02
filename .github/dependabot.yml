@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /trace-stores/apps/storefront
+      - /portfolio-projects/interview-nailer
+      - /portfolio-projects/interview-nailer/backend
+      - /portfolio-projects/interview-nailer/frontend
+      - /portfolio-projects/blockchain-api-service/backend
+      - /portfolio-projects/blockchain-api-service/frontend
+      - /portfolio-projects/kubernetes-demo/backend
+      - /portfolio-projects/kubernetes-demo/frontend
+      - /portfolio-projects/pesa-fams-banking-prototype
+      - /legacy-tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: pip
+    directory: /trace-stores/services/trace-api
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directories:
+      - /portfolio-projects/terraform-modules/vpc
+      - /portfolio-projects/terraform-modules/alb
+      - /portfolio-projects/kubernetes-demo/terraform
+      - /portfolio-projects/blockchain-api-service/terraform
+    schedule:
+      interval: weekly

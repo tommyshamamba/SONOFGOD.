@@ -23,9 +23,8 @@ variable "cluster_name" {
 }
 
 variable "kubernetes_version" {
-  description = "Kubernetes version for EKS"
+  description = "EKS version currently supported in the target AWS region; select explicitly before planning"
   type        = string
-  default     = "1.28"
 }
 
 variable "vpc_cidr" {
@@ -89,9 +88,9 @@ variable "redis_num_nodes" {
 }
 
 variable "create_database" {
-  description = "Whether to create RDS database"
+  description = "Optional RDS example; the current application uses JSON storage and does not connect to RDS"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "database_instance_class" {
@@ -128,12 +127,12 @@ variable "database_password" {
   description = "Database password"
   type        = string
   sensitive   = true
+  default     = null
 }
 
 variable "acm_certificate_arn" {
-  description = "ACM certificate ARN for HTTPS"
+  description = "Required ACM certificate ARN for the HTTPS listener, in the same region as the ALB"
   type        = string
-  default     = ""
 }
 
 variable "log_retention_days" {

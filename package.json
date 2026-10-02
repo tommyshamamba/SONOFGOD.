@@ -1,6 +1,12 @@
 {
   "name": "sonofgod-local-demo-checks",
   "private": true,
-  "scripts": { "test:browser": "node scripts/browser-smoke.cjs" },
-  "devDependencies": { "playwright": "1.58.2" }
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "demo:setup": "node scripts/setup-demos.cjs",
+    "demos": "node scripts/demo-services.cjs",
+    "test:browser": "node scripts/browser-smoke.cjs",
+    "test:browser:managed": "node scripts/demo-services.cjs --smoke"
+  },
+  "devDependencies": { "playwright": "1.63.0" }
 }

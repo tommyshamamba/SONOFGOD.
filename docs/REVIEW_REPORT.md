@@ -1,5 +1,7 @@
 # Implementation and verification report
 
+**Historical report:** the baseline below describes September 28, 2026. Use the [current verification record](VERIFICATION.md) for later repairs, hosted CI and browser results. Open items below may have been addressed since this review.
+
 Latest local implementation progress: [demo fixes and verification](LOCAL_DEMO_VERIFICATION.md). The baseline below is retained for context.
 
 Reviewed September 28, 2026. These results verify specific working paths, not production certification.

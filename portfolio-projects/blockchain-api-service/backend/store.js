@@ -1,19 +1,33 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
+const { DatabaseSync } = require('node:sqlite');
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 
-// A single-process store. An exclusive lock prevents accidental concurrent writers.
-// Writes replace the complete snapshot only after the temporary file is flushed.
+// JSON remains the storage format. SQLite supplies an OS-backed exclusive lock,
+// released even when the process crashes. Both files require a local filesystem.
 class FileStore {
   constructor(filename) {
     this.filename = path.resolve(filename);
     fs.mkdirSync(path.dirname(this.filename), { recursive: true });
-    this.lockfile = `${this.filename}.lock`;
-    this.lock = fs.openSync(this.lockfile, 'wx', 0o600);
+    if (fs.existsSync(`${this.filename}.lock`)) {
+      throw Object.assign(new Error('Legacy storage lock exists. Stop the old service and follow the storage migration instructions.'), { code: 'EEXIST' });
+    }
+    this.lockfile = `${this.filename}.lock.sqlite`;
     try {
-      fs.writeFileSync(this.lock, String(process.pid));
+      this.lock = new DatabaseSync(this.lockfile);
+      fs.chmodSync(this.lockfile, 0o600);
+      this.lock.exec('PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE');
+    } catch (error) {
+      if (this.lock) this.lock.close();
+      this.lock = undefined;
+      if (error.errcode === 5 || error.errcode === 6) {
+        throw Object.assign(new Error('Storage is already open by another process'), { code: 'EEXIST', cause: error });
+      }
+      throw error;
+    }
+    try {
       this.data = fs.existsSync(this.filename)
         ? JSON.parse(fs.readFileSync(this.filename, 'utf8'))
         : { version: 1, users: [], keys: [] };
@@ -27,6 +41,7 @@ class FileStore {
   }
 
   mutate(change) {
+    if (!this.lock) throw new Error('Storage is closed');
     const next = structuredClone(this.data);
     const result = change(next);
     const temporary = `${this.filename}.${randomUUID()}.tmp`;
@@ -73,9 +88,9 @@ class FileStore {
   }
   close() {
     if (this.lock !== undefined) {
-      fs.closeSync(this.lock);
+      this.lock.close();
       this.lock = undefined;
-      fs.unlinkSync(this.lockfile);
+      // Never unlink the mutex database: a waiter could hold the old inode.
     }
   }
 }

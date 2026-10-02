@@ -1,4 +1,9 @@
 node_modules
 build
-.env
 .git
+.env
+.env.*
+!.env.example
+data
+.test-data
+*.log

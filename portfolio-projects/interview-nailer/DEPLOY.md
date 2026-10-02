@@ -1,145 +1,45 @@
-# ============================================================
-#  KCA INTERVIEW NAILER — COMPLETE DEPLOYMENT GUIDE
-# ============================================================
+# Interview Nailer deployment
 
-## STACK OVERVIEW
-  Frontend  → Vercel (free tier)
-  Backend   → Railway.app (free tier / $5/mo)
-  Database  → Neon.tech (free PostgreSQL) or Supabase
-  Files     → Local for MVP, S3 for production
+Start with the [local demo guide](../../docs/LOCAL_DEMOS.md). The application serves its built frontend and API from one Node.js process; a separate frontend host is optional.
 
----
+## Local demo
 
-## STEP 1 — DATABASE SETUP (Neon.tech — Free)
+Use Node.js 24.19 or later in the 24.x line. From this project directory:
 
-1. Go to https://neon.tech → Create project "interview-nailer"
-2. Copy the connection string (looks like: postgresql://user:pass@ep-xxx.neon.tech/neondb)
-3. Open Neon SQL editor → paste and run: backend/config/schema.sql
-4. Done — your DB is live
-
----
-
-## STEP 2 — BACKEND DEPLOY (Railway.app)
-
-1. Push your project to GitHub
-2. Go to https://railway.app → New Project → Deploy from GitHub
-3. Select your repo → Set root directory to "backend"
-4. Add these environment variables in Railway dashboard:
-
-   ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
-   DATABASE_URL=postgresql://...your neon url...
-   JWT_SECRET=pick-a-long-random-string-here
-   JWT_EXPIRES_IN=7d
-   NODE_ENV=production
-   CLIENT_URL=https://your-app.vercel.app
-
-5. Railway auto-detects Node.js and runs: npm start
-6. Copy your Railway URL (e.g. https://interview-nailer-backend.railway.app)
-
----
-
-## STEP 3 — FRONTEND DEPLOY (Vercel)
-
-1. Go to https://vercel.com → Import your GitHub repo
-2. Set root directory to "frontend"
-3. Add environment variable:
-   REACT_APP_API_URL=https://interview-nailer-backend.railway.app
-4. Update frontend/src/api/index.js:
-   Change: baseURL: '/api'
-   To:     baseURL: process.env.REACT_APP_API_URL + '/api'
-5. Deploy → Vercel gives you a .vercel.app URL
-
----
-
-## STEP 4 — CONNECT THEM
-
-Update Railway env var:
-  CLIENT_URL=https://your-frontend.vercel.app
-
-Update Vercel env var:
-  REACT_APP_API_URL=https://your-backend.railway.app
-
-Redeploy both. Done. ✅
-
----
-
-## DOCKER (optional local dev)
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: interview_nailer
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./backend/config/schema.sql:/docker-entrypoint-initdb.d/schema.sql
-
-  backend:
-    build: ./backend
-    ports:
-      - "5000:5000"
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/interview_nailer
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      JWT_SECRET: localsecret
-      NODE_ENV: development
-      CLIENT_URL: http://localhost:3000
-    depends_on:
-      - db
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_URL: http://localhost:5000
-    depends_on:
-      - backend
-
-volumes:
-  pgdata:
+```sh
+npm run build:render
+npm --prefix backend start
 ```
 
-Run with: docker-compose up
+With no provider credentials or database URL, development mode uses labeled mock AI and a local JSON store. Open http://localhost:5000. The local store supports one process; use PostgreSQL for hosted deployments. Keep real applicant data out of shared demonstrations.
 
----
+## Render Blueprint
 
-## QUICK START (local dev without Docker)
+The supplied `render.yaml` is a configuration example; it has not been deployed from this workspace.
 
-# Terminal 1 — Database
-# Make sure PostgreSQL is running locally or use Neon connection string
+1. In Render, select this GitHub repository and the Blueprint path `portfolio-projects/interview-nailer/render.yaml`.
+2. Keep the service root directory `portfolio-projects/interview-nailer`. If you extract this project into its own repository, change `rootDir` to `.`.
+3. Review the proposed web service and PostgreSQL plans, limits and charges in Render before creating them. Free database availability and retention are provider restrictions, not application guarantees.
+4. The Blueprint builds both components, generates a signing secret and injects the database URL. It explicitly sets `AI_MODE=mock` and `ALLOW_MOCK_AI=true`, so the hosted interface remains a labeled demonstration.
+5. The start command applies the idempotent schema before starting the service. Render's free web tier does not support `preDeployCommand`; a paid, multi-instance deployment should run migrations once in a dedicated deployment step.
+6. The web service and database use the same region and private network. `DATABASE_SSL=false` applies only to that internal connection. For an external database URL, use certificate-verified TLS and configure trust for the database provider; do not carry this internal-network setting over.
+7. `RENDER_EXTERNAL_URL` supplies the HTTPS origin automatically. `TRUST_PROXY_HOPS=1` tells Express about Render's reverse proxy. Reassess this value if adding another proxy.
 
-# Terminal 2 — Backend
-cd backend
-cp .env.example .env
-# Fill in your ANTHROPIC_API_KEY and DATABASE_URL
-npm install
-npm run dev
-# → Running on http://localhost:5000
+After deployment, verify `/health` and `/api/status`, then register a synthetic account, complete a practice interview, restart the service and verify that the interview remains available. Provider deployment success and these browser checks are still required.
 
-# Terminal 3 — Frontend
-cd frontend
-npm install
-npm start
-# → Running on http://localhost:3000
+## Real AI mode
 
----
+Set `AI_MODE=anthropic`, `ANTHROPIC_API_KEY` and the account-supported `ANTHROPIC_MODEL` in the hosting provider's secret/environment controls. Set `ALLOW_MOCK_AI=false`. Do not commit a key. Run a bounded sample interview and confirm provider costs, response contracts and error handling before inviting users. Live provider responses have not been tested without an account.
 
-## PRODUCTION CHECKLIST
+## Separate frontend host
 
-[ ] ANTHROPIC_API_KEY is set and valid
-[ ] DATABASE_URL points to live DB
-[ ] JWT_SECRET is a strong random string (not "secret")
-[ ] CLIENT_URL matches your actual frontend domain (CORS)
-[ ] Rate limiting is active (already configured in server.js)
-[ ] Schema.sql has been run against production DB
-[ ] Test: POST /api/auth/register → should return token
-[ ] Test: POST /api/resume/upload with PDF → should return skills
-[ ] Test: POST /api/sessions/start → should return 12 questions
+Build the frontend with `REACT_APP_API_BASE_URL` set to the backend HTTPS API URL, including `/api` (for example, `https://interview-api.example.com/api`). Set backend `CLIENT_URL` to the exact frontend HTTPS origin. This value is embedded at build time, so rebuild after changing it. Configure the static host to send application routes to `index.html`.
+
+## Configuration references
+
+- [Render monorepo roots](https://render.com/docs/monorepo-support)
+- [Render Blueprint specification](https://render.com/docs/blueprint-spec)
+- [Render deployment steps](https://render.com/docs/deploys)
+- [Render PostgreSQL connections and TLS](https://render.com/docs/postgresql-creating-connecting)
+
+Local build and API tests validate application behavior. They do not verify Render provisioning, backups, production traffic, email delivery or a live AI account.

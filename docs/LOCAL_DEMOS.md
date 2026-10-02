@@ -1,6 +1,29 @@
 # Run the local demos
 
-These commands run synthetic demonstrations on your computer. Use Node 24 and Python 3.12 for the setup and test commands below. Several test scripts use `--test-isolation=none`; Node 22 uses an older flag name. The published CI workflow still selects Node 22 and needs a separate runtime/test-command repair. See the [Node CLI reference](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode).
+These commands run synthetic demonstrations on your computer. Use Node **24.19.0** (`.nvmrc`) and Python **3.12**, matching CI.
+
+## Start the collection
+
+From the repository root:
+
+```sh
+npm ci
+npm run demo:setup
+npm run demos
+```
+
+Setup creates `.venv`, installs dependencies, builds four frontends and downloads verified model weights. The launcher starts six demonstrations and waits for their HTTP readiness. Keep ports 3000, 3100, 3200, 3300, 5000, 8000 and 8090 free; stop this launcher with Ctrl+C. Persistent demo records use ignored `.demo-data/`. `PYTHON` can select the bootstrap interpreter for setup or an already provisioned interpreter for the launcher.
+
+For the complete browser suite, stop the launcher, then run:
+
+```sh
+npx playwright install chromium
+npm run test:browser:managed
+```
+
+The managed check creates isolated synthetic stores, starts the services, runs six browser journeys, saves screenshots under `playwright-report/` and stops its processes. Browser screenshots contain synthetic records only. GitHub Actions retains the `browser-evidence` artifact for 14 days.
+
+## Start individual applications
 
 Run each command from its named folder, in a separate terminal. Install dependencies once with `npm ci`. Stop a server with Ctrl+C. [Return to the portfolio](../README.md) or use the [documentation index](README.md) to find project status and verification reports.
 
@@ -38,7 +61,7 @@ npm ci
 npm run dev
 ```
 
-Choose a PNG/JPEG/WebP, inspect the processor label and download the returned PNG. Add products and refresh to verify the cart. The cart does not submit orders or collect payments. A production build is `npm run build` followed by `npm start`; restricted Windows hosts can set `$env:BUILD_WITH_THREADS='1'` before building.
+Choose a PNG/JPEG/WebP, inspect the processor label and download the returned PNG. Add products and refresh to verify the cart. The cart does not submit orders or collect payments. A production build is `npm run build` followed by `npm start`. Next.js builds require permission to start child processes; CI verifies the production build on Linux.
 
 ## Interview Nailer
 
@@ -84,7 +107,7 @@ npm start
 
 Register a synthetic account, create a key, copy it once and test address `0x1111111111111111111111111111111111111111`. Demo mode performs no external RPC calls or transactions. Revoke the key and confirm it stops working. Accounts and hashed keys persist in `backend/data/store.json`; raw keys are only returned when created. The local signing key changes on restart unless JWT_SECRET is configured, so sign in again after restarting.
 
-Storage is single-process and takes an exclusive lock. Stop normally with Ctrl+C. If a crash leaves `store.json.lock`, confirm the process ID inside it is no longer running before removing only that lock file. Keep the data file. Multiple replicas require shared database storage and are not supported by this file store.
+Storage is single-process and holds an exclusive SQLite lock while the JSON store is open. The operating system releases the lock after a crash; restart normally and retain both the data and lock database files. The backend regression suite verifies forced-crash recovery. Multiple replicas require shared application storage and are not supported by this file store.
 
 ## Kubernetes application without a cluster
 
@@ -106,7 +129,7 @@ Simulate a missed call, inspect its draft and replay the same event. Nothing is 
 - For banking PostgreSQL cases, set `TEST_DATABASE_URL` to a migrated/seeded `pesa_test_` database.
 - For Interview PostgreSQL cases, set `TEST_STORAGE_MODE=postgres`, `STORAGE_MODE=postgres`, `DATABASE_SSL=false` and `DATABASE_URL` to a disposable `interview_test_` database, run `npm run db:init`, then `npm test`.
 - Run `python -m unittest discover -s demo -p 'test_*.py'` in the Voice project.
-- Browser smoke script: from the repository root run `npm ci`, `npx playwright install chromium`, start Trace/Interview/Kubernetes/Voice as above, then `npm run test:browser`. It creates synthetic records only. Browser execution was blocked by Windows process permissions in this environment and is not recorded as passed.
+- Browser smoke script: use `npm run test:browser:managed` after setup, or start all six demos above and use `npm run test:browser`. It creates synthetic records only. Use the [current verification report](VERIFICATION.md) for the observed hosted browser result; Windows application sandboxes may block child-process execution.
 - Terraform: inside each module/root run `terraform init -backend=false`, then `terraform validate`. These commands do not provision cloud resources. No `apply` is needed for local demos.
 
-See [the current verification report](LOCAL_DEMO_VERIFICATION.md) for exact results and outstanding limitations.
+See [the current verification report](VERIFICATION.md) for exact results and outstanding limitations.

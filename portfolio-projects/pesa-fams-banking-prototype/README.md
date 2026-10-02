@@ -2,7 +2,7 @@
 
 For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
 
-Bank DRC Fixed Asset Management System with two runtime modes:
+A fixed-asset management demonstration with synthetic bank/branch records and two runtime modes. Use Node 24.19.0 and, for database mode, PostgreSQL:
 
 - `prototype` mode for fast demo work without PostgreSQL
 - `database` mode for the real PostgreSQL-backed MVP foundation
@@ -12,7 +12,7 @@ Bank DRC Fixed Asset Management System with two runtime modes:
 ### Prototype mode
 
 ```powershell
-npm install
+npm ci
 $env:APP_MODE = "prototype"
 $env:HOST = "127.0.0.1"
 node src/server.js
@@ -20,7 +20,7 @@ node src/server.js
 
 Open `http://localhost:3100`.
 
-To open it from another PC on the same network, start the server and use the LAN URL printed in the terminal, for example `http://192.168.1.25:3100`.
+The documented `HOST=127.0.0.1` setting serves this computer only. For an intentional demonstration on a trusted LAN, set `HOST=0.0.0.0` before starting and use the host computer's LAN address. Keep synthetic credentials and data confined to the demonstration.
 
 ### Database mode
 
@@ -47,7 +47,7 @@ node scripts/seed.js
 node src/server.js
 ```
 
-The server now prints all reachable local/LAN URLs on startup. Share the `192.168.x.x` or `10.x.x.x` URL with another PC on the same network, not `localhost`.
+The address is determined by `HOST` and `PORT`. Use `HOST=127.0.0.1` for a local database demonstration. LAN access requires an intentional non-loopback bind and appropriate network controls.
 
 5. Run smoke checks:
 
@@ -66,7 +66,7 @@ If Docker is not installed, the preflight script will tell you early and the app
 ## Notes on LAN access
 
 - `localhost` only works on the same machine that is running the app.
-- For another PC on the same Wi-Fi or LAN, use the LAN URL printed by the server at startup.
+- Another PC can connect only when the server is intentionally bound to a LAN interface; the quickstart's loopback address is local-only.
 - If another PC still cannot open the app, Windows Firewall is usually the next thing to check for Node.js or port `3100`.
 
 ## Demo users
@@ -104,7 +104,7 @@ These features have source implementations. Live PostgreSQL integration and depl
 
 ## Demo reset
 
-Use this whenever you want to restore the seeded showcase data quickly:
+**These commands reset the configured database. Use only a disposable demo database whose records you intend to replace.** To restore its generated showcase data:
 
 ```powershell
 node scripts/seed.js
@@ -148,6 +148,4 @@ to the same URL and run `npm test`. The integration suite requires a
 and seeds an isolated PostgreSQL service automatically. The seed command is for
 disposable demo/test databases only.
 
-The local validation passed 26 tests, including four real database cases.
-This covers database reads, access control and transaction rollback; it does not
-validate every financial write workflow, concurrency or production operations.
+The suite contains seven PostgreSQL integration cases, including asset writes, branch isolation, concurrent maker/checker approval, rollback and disabled-user sessions. Other tests cover job-payload validation, pagination, malformed requests, authentication, report exports and financial calculations. Consult the [current evidence report](../../docs/VERIFICATION.md) for observed counts and the tested commit. No test result establishes regulatory compliance, live bank integration or complete financial certification.

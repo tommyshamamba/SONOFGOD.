@@ -14,11 +14,11 @@
       <section class="login-brand">
         <div class="eyebrow">PESA Consulting Group</div>
         <h1>Bank DRC Fixed Asset Management System</h1>
-        <p>Prototype focused on the deal-winning story: audit closure, automated depreciation, GL posting, branch verification, and role-based control.</p>
+        <p>Explore synthetic asset records, depreciation approval, simulated GL posting, branch verification, and role-based access.</p>
         <div class="value-grid">
-          <article class="value-card"><span>5,600</span><p>Assets migrated into a central register</p></article>
-          <article class="value-card"><span>37</span><p>Locations across DRC and Head Office</p></article>
-          <article class="value-card"><span>0</span><p>Target reconciliation discrepancies after go-live</p></article>
+          <article class="value-card"><span>5,600</span><p>Synthetic assets in the demonstration register</p></article>
+          <article class="value-card"><span>37</span><p>Sample locations for branch workflows</p></article>
+          <article class="value-card"><span>5</span><p>Demo roles with distinct access and responsibilities</p></article>
         </div>
       </section>
 
@@ -36,7 +36,7 @@
           <p class="helper-text">Use IT Admin to prepare depreciation, Finance Admin to approve and post, or Auditor to show strict read-only access.</p>
         </form>
         <div id="demoCredentials" class="demo-credentials"></div>
-        <p id="loginError" class="error-text hidden"></p>
+        <p id="loginError" class="error-text hidden" role="alert"></p>
       </section>
     </div>
 
@@ -71,8 +71,10 @@
           <div class="topbar-right">
             <div id="branchPill" class="topbar-pill"></div>
             <div id="rolePill" class="topbar-pill"></div>
+            <button id="switchAccountButton" class="ghost-button" type="button">Switch account</button>
           </div>
         </header>
+        <p id="prototypeModeNotice" class="helper-text hidden">Local demonstration: all records and GL postings are simulated. Asset onboarding, imports, and user administration are available in database mode.</p>
 
         <section class="panel-section active" id="section-dashboard">
           <div id="kpiGrid" class="kpi-grid"></div>

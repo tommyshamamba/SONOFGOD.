@@ -1,35 +1,8 @@
 import axios from 'axios';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+import { resolveApiBase } from './base-url.mjs';
 
-function isLocalHost(hostname = '') {
-  return LOCAL_HOSTS.has(hostname.toLowerCase());
-}
-
-function resolveApiBase() {
-  const configuredBase = (process.env.REACT_APP_API_BASE_URL || '/api').replace(/\/$/, '');
-
-  if (typeof window === 'undefined' || !configuredBase.startsWith('http')) {
-    return configuredBase;
-  }
-
-  try {
-    const apiUrl = new URL(configuredBase);
-    const pageHost = window.location.hostname;
-
-    // If the app is opened from another device, "localhost" would point at that
-    // device instead of this dev machine. In that case, rely on the CRA proxy.
-    if (isLocalHost(apiUrl.hostname) && !isLocalHost(pageHost)) {
-      return '/api';
-    }
-  } catch {
-    // Fall back to the configured value if it is not a valid URL.
-  }
-
-  return configuredBase;
-}
-
-const API_BASE = resolveApiBase();
+const API_BASE = resolveApiBase(process.env.REACT_APP_API_BASE_URL, typeof window === 'undefined' ? undefined : window.location.origin);
 const API_BASE_HINT = (() => {
   if (typeof window !== 'undefined' && API_BASE === '/api') {
     return `${window.location.origin}/api`;

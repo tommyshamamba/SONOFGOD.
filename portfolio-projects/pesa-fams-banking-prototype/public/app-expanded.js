@@ -50,15 +50,20 @@ async function api(path, options = {}) {
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Request failed.");
+  if (!response.ok) {
+    const error = new Error(payload.error || "Request failed.");
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
 async function safeApi(path, fallback) {
   try {
     return await api(path);
-  } catch (_error) {
-    return fallback;
+  } catch (error) {
+    if ([403, 404].includes(error.status)) return fallback;
+    throw error;
   }
 }
 
@@ -82,19 +87,30 @@ async function downloadAuthenticated(path, filename) {
 }
 
 async function openPrintableReport(path) {
-  const headers = {};
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const response = await fetch(path, { headers });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || "Printable report could not be opened.");
-  }
-  const html = await response.text();
-  const win = window.open("", "_blank", "noopener,noreferrer");
+  // Open during the click event, before awaiting the authenticated request.
+  // Setting opener directly protects the parent while retaining this handle.
+  const win = window.open("", "_blank");
   if (!win) throw new Error("Pop-up blocked. Allow pop-ups to open the print-ready report.");
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  win.opener = null;
+  win.document.title = "Preparing report";
+  win.document.body.textContent = "Preparing your print-ready report…";
+  try {
+    const headers = {};
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const response = await fetch(path, { headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "Printable report could not be opened.");
+    }
+    const html = await response.text();
+    if (win.closed) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } catch (error) {
+    win.close();
+    throw error;
+  }
 }
 
 function showToast(message, tone = "info") {
@@ -220,6 +236,7 @@ function setDisabledWithin(containerId, disabled) {
 }
 
 function applyRoleVisibility() {
+  const prototype = state.meta.mode === "prototype";
   const adminVisible = hasPermission("admin.users.read") || hasPermission("admin.users.manage");
   document.querySelector('.nav-button[data-section="admin"]').classList.toggle("hidden", !adminVisible);
   if (!adminVisible && state.currentSection === "admin") activateSection("dashboard");
@@ -232,6 +249,16 @@ function applyRoleVisibility() {
   document.getElementById("importCsvInput").disabled = !canImport;
   document.getElementById("importPreviewButton").disabled = !canImport;
   document.getElementById("importCommitButton").disabled = !canImport;
+  document.querySelector('.nav-button[data-section="approvals"]').classList.toggle("hidden", prototype);
+  document.getElementById("prototypeModeNotice").classList.toggle("hidden", !prototype);
+  for (const id of ["assetForm", "importPreviewButton", "assetAttachmentForm", "assetWorkflowForm"]) {
+    document.getElementById(id).closest("article").classList.toggle("hidden", prototype);
+  }
+  document.getElementById("retryFailuresButton").classList.toggle("hidden", prototype);
+  document.getElementById("syncOfflineQueueButton").disabled = prototype || !hasPermission("assets.verify");
+  document.getElementById("runReconciliationButton").disabled = !hasPermission("reconciliation.run");
+  setDisabledWithin("assetAttachmentForm", !(hasPermission("assets.attach") || hasPermission("assets.attach.branch")));
+  setDisabledWithin("assetWorkflowForm", !(hasPermission("workflows.advance") || hasPermission("workflows.advance.branch")));
 }
 
 function renderDashboard() {
@@ -326,8 +353,11 @@ function renderLifecycle() {
   ];
   document.getElementById("kanbanBoard").innerHTML = columns.map((column) => {
     const cards = state.lifecycle.columns[column.key] || [];
-    return `<article class="kanban-column"><h3>${column.title}</h3><div class="kanban-note">${cards.length} items</div>${cards.map((card) => `<div class="kanban-card"><strong>${card.title}</strong><div>${card.asset.name}</div><div class="kanban-note">${card.asset.assetId} | ${card.asset.branchName}</div><div class="kanban-note">${card.note || ""}</div>${card.approvalState === "PENDING" ? `<div class="approval-card-note">${statusPill(card.approvalLabel || "Pending approval", "warning")}<span class="inline-note">Checker action is still pending for this workflow.</span></div>` : card.nextColumn !== "completed" ? `<button class="secondary-button lifecycle-action" data-workflow-id="${card.id}">${card.actionLabel}</button>` : statusPill("Completed in current flow", "success")}</div>`).join("")}</article>`;
+    return `<article class="kanban-column"><h3>${column.title}</h3><div class="kanban-note">${cards.length} items</div>${cards.map((card) => `<div class="kanban-card"><strong>${card.title}</strong><div>${card.asset.name}</div><div class="kanban-note">${card.asset.assetId} | ${card.asset.branchName}</div><div class="kanban-note">${card.note || ""}</div>${card.approvalState === "PENDING" ? `<div class="approval-card-note">${statusPill(card.approvalLabel || "Pending approval", "warning")}<span class="inline-note">Checker action is still pending for this workflow.</span></div>` : card.column !== "completed" ? `<button class="secondary-button lifecycle-action" data-workflow-id="${card.id}">${card.actionLabel}</button>` : statusPill("Completed in current flow", "success")}</div>`).join("")}</article>`;
   }).join("");
+  document.querySelectorAll(".lifecycle-action").forEach((button) => {
+    button.disabled = !(hasPermission("workflows.advance") || hasPermission("workflows.advance.branch"));
+  });
 }
 
 function renderDepreciation() {
@@ -336,6 +366,9 @@ function renderDepreciation() {
     document.getElementById("depreciationPanel").innerHTML = "<div class=\"inline-note\">No depreciation run is available yet.</div>";
     document.getElementById("depreciationHistory").innerHTML = "";
     document.getElementById("depreciationExceptions").innerHTML = `<tr><td colspan="6">No failed depreciation lines are currently waiting for retry.</td></tr>`;
+    document.getElementById("runDepreciationButton").disabled = !hasPermission("depreciation.run");
+    document.getElementById("approveDepreciationButton").disabled = true;
+    document.getElementById("retryFailuresButton").disabled = true;
     return;
   }
   const approval = state.depreciation.approvalRequest;
@@ -343,8 +376,8 @@ function renderDepreciation() {
   document.getElementById("depreciationPanel").innerHTML = `<div>${statusPill(run.statusLabel || run.status, run.status === "POSTED" ? "success" : run.status === "PENDING_APPROVAL" ? "warning" : run.status === "REJECTED" ? "danger" : "info")}</div><h3>${run.period} monthly run</h3><p>${run.summary}</p>${approvalHtml}<div class="summary-grid"><div class="summary-stat"><span>Assets</span><strong>${new Intl.NumberFormat().format(run.totalAssetsProcessed)}</strong></div><div class="summary-stat"><span>Total USD</span><strong>${formatAmount(run.totalDepreciationUSD, "USD")}</strong></div><div class="summary-stat"><span>Total CDF</span><strong>${formatAmount(run.totalDepreciationCDF, "CDF")}</strong></div><div class="summary-stat"><span>Rate</span><strong>${new Intl.NumberFormat().format(run.exchangeRateUsed)}</strong></div></div><div class="kanban-note">Failures currently held for review: ${run.failureCount}</div>`;
   document.getElementById("depreciationHistory").innerHTML = state.depreciation.history.map((item) => `<tr><td>${item.period}</td><td>${statusPill(item.statusLabel || item.status, item.status === "POSTED" ? "success" : item.status === "PENDING_APPROVAL" ? "warning" : item.status === "REJECTED" ? "danger" : "info")}</td><td>${new Intl.NumberFormat().format(item.totalAssetsProcessed)}</td><td>${formatAmount(item.totalDepreciationUSD, "USD")}</td><td>${formatAmount(item.totalDepreciationCDF, "CDF")}</td><td>${item.failureCount}</td></tr>`).join("");
   document.getElementById("depreciationExceptions").innerHTML = (state.depreciation.postingExceptions || []).length ? state.depreciation.postingExceptions.map((item) => `<tr><td>${item.assetId}<div class="kanban-note">${item.assetName}</div></td><td>${item.branchName}</td><td>${formatAmount(item.depreciationCharge, item.currency)}</td><td>${statusPill(item.postingStatus, item.postingStatus === "FAILED" ? "danger" : "success")}</td><td>${item.retryCount}</td><td>${item.failureReason || "-"}</td></tr>`).join("") : `<tr><td colspan="6">No failed depreciation lines are currently waiting for retry.</td></tr>`;
-  document.getElementById("runDepreciationButton").disabled = !hasPermission("depreciation.run");
-  document.getElementById("approveDepreciationButton").disabled = !hasPermission("depreciation.approve") || !["PENDING_APPROVAL", "DRAFT"].includes(run.status);
+  document.getElementById("runDepreciationButton").disabled = !hasPermission("depreciation.run") || (state.meta.mode === "prototype" && run.status === "POSTED");
+  document.getElementById("approveDepreciationButton").disabled = !hasPermission("depreciation.approve") || run.runByUserId === state.user.id || !["PENDING_APPROVAL", "DRAFT"].includes(run.status);
   document.getElementById("retryFailuresButton").disabled = !hasPermission("depreciation.retry_failures") || !(state.depreciation.postingExceptions || []).length;
 }
 
@@ -403,8 +436,8 @@ function renderVerificationResult() {
   }
   const asset = state.verificationAsset;
   container.classList.remove("hidden");
-  document.getElementById("verificationActions").classList.remove("hidden");
-  document.getElementById("verificationNotesField").classList.remove("hidden");
+  document.getElementById("verificationActions").classList.toggle("hidden", !hasPermission("assets.verify"));
+  document.getElementById("verificationNotesField").classList.toggle("hidden", !hasPermission("assets.verify"));
   container.innerHTML = `<div class="verification-asset"><strong>${asset.name}</strong><div>${asset.tagCode}</div><div>${asset.branchName}</div><div>Last verified: ${formatDateOnly(asset.lastVerifiedAt)}</div>${statusPill(asset.statusLabel, asset.roleTone)}</div>`;
 }
 
@@ -434,7 +467,7 @@ async function refreshAudit() {
 }
 
 async function refreshApprovals() {
-  state.approvals = await safeApi("/api/approvals", { pendingCount: 0, items: [] });
+  state.approvals = state.meta.mode === "prototype" ? { pendingCount: 0, items: [] } : await safeApi("/api/approvals", { pendingCount: 0, items: [] });
   renderApprovals();
 }
 
@@ -444,7 +477,7 @@ async function refreshImports() {
 }
 
 async function refreshVerificationQueue() {
-  state.verificationQueue = (await safeApi("/api/verification/queue", { items: [] })).items || [];
+  state.verificationQueue = state.meta.mode === "prototype" ? [] : (await safeApi("/api/verification/queue", { items: [] })).items || [];
   renderVerificationQueue();
 }
 
@@ -459,19 +492,22 @@ async function refreshDashboard() {
 }
 
 async function loadAllData() {
-  const [meta, dashboard, assets, lifecycle, depreciation, approvals, reconciliation, reports, audit, imports, verificationQueue, adminUsers] = await Promise.all([
-    api("/api/meta"),
+  const meta = await api("/api/meta");
+  state.meta = meta;
+  state.user = meta.user;
+  const optional = (path, fallback) => meta.mode === "prototype" ? Promise.resolve(fallback) : safeApi(path, fallback);
+  const [dashboard, assets, lifecycle, depreciation, approvals, reconciliation, reports, audit, imports, verificationQueue, adminUsers] = await Promise.all([
     api("/api/dashboard"),
     api("/api/assets?page=1&pageSize=12"),
     api("/api/lifecycle"),
     api("/api/depreciation"),
-    safeApi("/api/approvals", { pendingCount: 0, items: [] }),
+    optional("/api/approvals", { pendingCount: 0, items: [] }),
     api("/api/reconciliation"),
     api("/api/reports"),
-    api("/api/audit"),
-    safeApi("/api/imports", { items: [] }),
-    safeApi("/api/verification/queue", { items: [] }),
-    safeApi("/api/admin/users", { items: [] })
+    hasPermission("audit.read") ? api("/api/audit") : Promise.resolve({ items: [] }),
+    optional("/api/imports", { items: [] }),
+    optional("/api/verification/queue", { items: [] }),
+    optional("/api/admin/users", { items: [] })
   ]);
   state.meta = meta;
   state.user = meta.user;
@@ -511,17 +547,27 @@ async function loadAllData() {
 async function handleLogin(event) {
   event.preventDefault();
   const error = document.getElementById("loginError");
+  const button = document.querySelector('#loginForm button[type="submit"]');
+  button.disabled = true;
+  button.textContent = "Opening workspace…";
   try {
     error.classList.add("hidden");
     const payload = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: document.getElementById("emailInput").value, password: document.getElementById("passwordInput").value }) });
     state.token = payload.token;
+    await loadAllData();
     document.getElementById("loginView").classList.add("hidden");
     document.getElementById("appView").classList.remove("hidden");
-    await loadAllData();
     showToast(`Signed in as ${payload.user.roleLabel}`, "success");
   } catch (err) {
+    state.token = null;
+    state.user = null;
+    document.getElementById("loginView").classList.remove("hidden");
+    document.getElementById("appView").classList.add("hidden");
     error.textContent = err.message;
     error.classList.remove("hidden");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Enter Prototype";
   }
 }
 
@@ -647,6 +693,7 @@ async function submitVerification(outcome) {
     await refreshVerificationQueue();
     showToast(response.message, "success");
   } catch (error) {
+    if (error.status || state.meta.mode === "prototype") return showToast(error.message, "error");
     queueOfflineVerification(payload);
     showToast(`Saved offline instead: ${error.message}`, "info");
   }
@@ -756,6 +803,7 @@ async function submitPasswordForm(event) {
 
 function wireEvents() {
   document.getElementById("loginForm").addEventListener("submit", handleLogin);
+  document.getElementById("switchAccountButton").addEventListener("click", () => window.location.reload());
   document.getElementById("navStack").addEventListener("click", (event) => {
     const button = event.target.closest(".nav-button");
     if (button) activateSection(button.dataset.section);
@@ -895,8 +943,14 @@ function wireEvents() {
 }
 
 async function bootstrap() {
-  renderDemoCredentials(await api("/api/bootstrap"));
   wireEvents();
+  try {
+    renderDemoCredentials(await api("/api/bootstrap"));
+  } catch (_error) {
+    const error = document.getElementById("loginError");
+    error.textContent = "Demo credentials could not be loaded. Check the server connection, then refresh or sign in with your account.";
+    error.classList.remove("hidden");
+  }
 }
 
 window.addEventListener("beforeunload", stopScanner);

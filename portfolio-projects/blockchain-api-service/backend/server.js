@@ -25,7 +25,7 @@ function readConfig(env) {
   if (production && (!env.DATA_FILE || !env.CORS_ORIGIN || !env.REDIS_URL || demo)) {
     throw new Error('Production requires DATA_FILE, CORS_ORIGIN and REDIS_URL, with DEMO_MODE disabled');
   }
-  const origins = (env.CORS_ORIGIN || 'http://localhost:3001,http://localhost,http://127.0.0.1:3001').split(',').map(value => value.trim());
+  const origins = (env.CORS_ORIGIN || 'http://localhost:3002,http://127.0.0.1:3002,http://localhost:3001,http://localhost,http://127.0.0.1:3001').split(',').map(value => value.trim());
   for (const origin of origins) {
     const parsed = new URL(origin);
     if (parsed.origin !== origin || (production && parsed.protocol !== 'https:')) throw new Error('CORS_ORIGIN must contain exact origins (HTTPS in production)');

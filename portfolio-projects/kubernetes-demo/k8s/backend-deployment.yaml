@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: k8s-demo-backend:latest
+        image: k8s-demo-backend:local
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         env:

@@ -1,18 +1,21 @@
 # Production-readiness checklist
 
-Latest local implementation progress: [demo fixes and verification](LOCAL_DEMO_VERIFICATION.md). The baseline below is retained for context.
+Scope: applications, infrastructure examples and isolated legacy tests in this repository. The [current verification record](VERIFICATION.md) identifies the checked commit, commands, hosted results and remaining failures. The September reports are historical snapshots.
 
-Scope: projects in this repository. Baseline evidence is local commit `3987438`.
-Checked items describe completed local verification only. Unchecked items require evidence, not necessarily new code. This checklist is not a certification.
+Automated tests establish the behaviors they exercise. They do not establish production readiness, commercial use, financial certification or profitable trading. Complete the remaining items for the specific application and environment being released.
 
-## Verified baseline
+## Implemented verification
 
-- [x] Project catalog, contribution instructions and source checker exist.
-- [x] All four frontend production builds passed locally.
-- [x] Trace executes ONNX inference; eight local tests passed including pretrained U2NetP execution.
-- [x] Banking migrations and seed ran against disposable PostgreSQL; all 26 tests passed.
-- [x] Root GitHub Actions jobs exist for these checks.
-- [ ] A successful hosted Actions run is linked for the exact release commit.
+- [x] Project catalog, contribution instructions, source checks and pinned dependency installations.
+- [x] Production builds for the four frontends.
+- [x] Trace ONNX execution tests, upload validation and frontend client/cart tests; pretrained-model execution is a separate optional check.
+- [x] PESA FAMS migrations, synthetic seed data and real PostgreSQL tests covering authentication, writes, permissions, rollback and concurrent approvals.
+- [x] Interview Nailer tests in file and PostgreSQL modes, including account isolation and mocked provider responses.
+- [x] Blockchain and Kubernetes API tests; local Voice event persistence and duplicate-delivery tests.
+- [x] Hosted jobs for container checks, Terraform validation and dependency audits.
+- [x] Isolated Python regressions and Solidity execution in an in-memory VM; no external transactions.
+
+Browser results and the overall workflow outcome are recorded in [current verification](VERIFICATION.md). A passing subset of jobs must not be described as a complete passing run.
 
 ## Apply separately to each application being released
 
@@ -54,13 +57,13 @@ Checked items describe completed local verification only. Unchecked items requir
 | Project | Evidence still needed |
 |---|---|
 | Trace | Representative segmentation evaluation, request limits under load, model provenance/license review; orders/storage/payments if offered |
-| Interview Nailer | Existing Anthropic mode tested, invalid configuration rejected, two-user isolation in both storage modes, upload cleanup |
-| PESA FAMS | Financial write and concurrency coverage, maker/checker and branch tests on PostgreSQL, restore rehearsal |
-| Blockchain API | Provider failure/retry behavior, API authorization, response correctness and key handling |
+| Interview Nailer | Authorized live-provider smoke test with synthetic input; production database operations, retention and deployment configuration |
+| PESA FAMS | Broader financial acceptance scenarios, branch/maker-checker review, backup/restore rehearsal and operational controls |
+| Blockchain API | Real RPC-provider integration, deployment-specific quotas and durable production storage; current provider-failure tests use controlled fixtures |
 | Kubernetes Demo | Target-cluster rollout, service connectivity, readiness, rollback and resource limits |
-| Terraform Modules | Module validation, reviewed plan and authorized sandbox provisioning/cleanup |
-| Voice AI | Verified webhooks, duplicate handling, test call, audio flow and human fallback |
-| Trading/Solidity | Offline/local-chain tests and independent review before real funds; outside application release scope |
+| Terraform Modules | Reviewed plan, authorized sandbox provisioning, connectivity and cleanup; syntax/provider validation is already automated |
+| Voice AI | Provider webhook verification, real test call, audio flow and human fallback; local duplicate handling is already tested |
+| Trading/Solidity | Independent contract review, actual protocol/address compatibility, full bot dependencies and deployment-specific storage-layout review; local regressions do not establish profit or safety with funds |
 
 ## Evidence record template
 

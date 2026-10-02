@@ -19,9 +19,12 @@ spec:
         app: blockchain-api
         component: backend
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
       - name: backend
-        image: blockchain-api-backend:latest
+        image: blockchain-api-backend:local
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         env:

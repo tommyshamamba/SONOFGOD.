@@ -2,22 +2,30 @@ services:
   - type: web
     name: interview-nailer
     runtime: node
+    rootDir: portfolio-projects/interview-nailer
     plan: free
     region: oregon
     autoDeployTrigger: commit
     healthCheckPath: /health
     buildCommand: npm run build:render
-    preDeployCommand: npm run db:init --prefix backend
-    startCommand: npm --prefix backend start
+    # Free web services do not support preDeployCommand. The idempotent schema
+    # setup runs before this single-instance demonstration starts listening.
+    startCommand: npm --prefix backend run db:init && npm --prefix backend start
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 22
+        value: "24.19.0"
       - key: STORAGE_MODE
         value: postgres
       - key: AI_MODE
         value: mock
+      - key: ALLOW_MOCK_AI
+        value: "true"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: DATABASE_SSL
+        value: "false"
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL

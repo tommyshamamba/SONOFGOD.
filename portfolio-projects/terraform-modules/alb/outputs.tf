@@ -40,5 +40,5 @@ output "http_listener_arn" {
 
 output "https_listener_arn" {
   description = "ARN of the HTTPS listener"
-  value       = var.create_https_listener && var.acm_certificate_arn != "" ? aws_lb_listener.https[0].arn : null
+  value       = var.create_https_listener ? aws_lb_listener.https[0].arn : null
 }
