@@ -22,9 +22,10 @@ const { randomUUID } = require('node:crypto');
     await page.getByLabel('Upload artwork', { exact: true }).setInputFiles({ name: 'demo.png', mimeType: 'image/png', buffer: Buffer.from(fixture, 'base64') });
     await page.getByRole('link', { name: 'Download PNG' }).waitFor({ timeout: 30000 });
     assert.match(await page.locator('.processor').innerText(), /Processed with/);
-    const downloading = page.waitForEvent('download');
-    await page.getByRole('link', { name: 'Download PNG' }).click();
-    const download = await downloading;
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('link', { name: 'Download PNG' }).click()
+    ]);
     assert.match(download.suggestedFilename(), /\.png$/);
     await page.getByRole('button', { name: 'Add to cart' }).first().click();
     await page.getByRole('button', { name: /Cart 1/ }).click();
@@ -33,7 +34,8 @@ const { randomUUID } = require('node:crypto');
     await page.getByRole('button', { name: 'Close cart' }).click();
     await page.reload();
     await page.getByRole('button', { name: /Cart 2/ }).waitFor();
-    await page.screenshot({ path: path.join(screenshots, 'trace.png'), fullPage: true });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(screenshots, 'trace.png') });
     console.log('PASS Trace: real upload, PNG download, cart updates and persistence');
 
     await page.goto((process.env.INTERVIEW_URL || 'http://localhost:5000') + '/register');
@@ -45,9 +47,12 @@ const { randomUUID } = require('node:crypto');
     await page.waitForURL(url => url.pathname === '/');
     await page.goto((process.env.INTERVIEW_URL || 'http://localhost:5000') + '/mock');
     await page.locator('input').first().fill('Software engineer');
-    const sessionResponse = page.waitForResponse(r => r.url().endsWith('/api/sessions/start') && r.request().method() === 'POST');
-    await page.getByRole('button', { name: /Start Interview/i }).click();
-    const sessionData = await (await sessionResponse).json();
+    const [sessionResponse] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/sessions/start') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: /Start Interview/i }).click()
+    ]);
+    assert.ok(sessionResponse.ok(), 'Interview session starts successfully');
+    const sessionData = await sessionResponse.json();
     assert.ok(sessionData.questions?.length > 0);
     await page.getByRole('button', { name: /Start Question 1/i }).click();
     for (let i = 0; i < sessionData.questions.length; i++) {
@@ -58,7 +63,8 @@ const { randomUUID } = require('node:crypto');
     await page.getByRole('heading', { name: 'Coaching Report', exact: true }).waitFor();
     await page.reload();
     await page.getByRole('heading', { name: 'Coaching Report', exact: true }).waitFor();
-    await page.screenshot({ path: path.join(screenshots, 'interview.png'), fullPage: true });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(screenshots, 'interview.png') });
     console.log('PASS Interview: registration, all answers, scoring, completion and persisted coaching through browser');
 
     const maker = await context.newPage();
@@ -67,21 +73,41 @@ const { randomUUID } = require('node:crypto');
     await maker.locator('#passwordInput').fill('ITAdmin123!');
     await maker.getByRole('button', { name: 'Enter Prototype' }).click();
     await maker.locator('[data-section="depreciation"]').click();
-    const prepared = maker.waitForResponse(r => r.url().endsWith('/api/depreciation/run') && r.request().method() === 'POST');
-    await maker.locator('#runDepreciationButton').click();
-    assert.ok((await prepared).ok(), 'Banking maker prepares run');
+    const [prepared] = await Promise.all([
+      maker.waitForResponse(r => r.url().endsWith('/api/depreciation/run') && r.request().method() === 'POST'),
+      maker.locator('#runDepreciationButton').click()
+    ]);
+    assert.ok(prepared.ok(), 'Banking maker prepares run');
     assert.equal(await maker.locator('#approveDepreciationButton').isDisabled(), true, 'IT maker cannot approve');
     const checker = await context.newPage();
     await checker.goto(process.env.BANKING_URL || 'http://localhost:3100');
     await checker.getByRole('button', { name: 'Enter Prototype' }).click();
     await checker.locator('[data-section="depreciation"]').click();
-    const posted = checker.waitForResponse(r => r.url().endsWith('/api/depreciation/approve') && r.request().method() === 'POST');
-    await checker.locator('#approveDepreciationButton').click();
-    assert.ok((await posted).ok(), 'Different banking checker approves');
+    const [posted] = await Promise.all([
+      checker.waitForResponse(r => r.url().endsWith('/api/depreciation/approve') && r.request().method() === 'POST'),
+      checker.locator('#approveDepreciationButton').click()
+    ]);
+    assert.ok(posted.ok(), 'Different banking checker approves');
     await checker.locator('#depreciationPanel').getByText(/Posted/i).first().waitFor();
-    await checker.screenshot({ path: path.join(screenshots, 'banking.png'), fullPage: true });
+    await checker.evaluate(() => window.scrollTo(0, 0));
+    await checker.screenshot({ path: path.join(screenshots, 'banking.png') });
+    await checker.locator('[data-section="reports"]').click();
+    const [report] = await Promise.all([
+      context.waitForEvent('page'),
+      checker.locator('#reportGrid').getByRole('button', { name: 'Print Pack', exact: true }).first().click()
+    ]);
+    await report.getByRole('heading', { name: 'IAS 16 Fixed Asset Schedule', exact: true }).waitFor();
+    assert.equal(await report.evaluate(() => window.opener), null, 'Report cannot control the parent page');
+    await report.close();
+    await checker.getByRole('button', { name: 'Switch account', exact: true }).click();
+    await checker.locator('#emailInput').fill('auditor@bankdrc.cd');
+    await checker.locator('#passwordInput').fill('Audit123!');
+    await checker.getByRole('button', { name: 'Enter Prototype' }).click();
+    await checker.locator('[data-section="depreciation"]').click();
+    assert.equal(await checker.locator('#runDepreciationButton').isDisabled(), true, 'Auditor cannot prepare runs');
+    assert.equal(await checker.locator('#approveDepreciationButton').isDisabled(), true, 'Auditor cannot approve runs');
     await maker.close(); await checker.close();
-    console.log('PASS Banking: separate maker/checker approval through browser');
+    console.log('PASS Banking: separate maker/checker approval, authenticated print report and auditor restrictions');
 
     await page.goto(process.env.BLOCKCHAIN_URL || 'http://localhost:3300');
     await page.locator('input[type="email"]').fill(`browser-${randomUUID()}@example.test`);
@@ -95,16 +121,19 @@ const { randomUUID } = require('node:crypto');
     await page.getByRole('heading', { name: 'Balance Result', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Revoke', exact: true }).click();
     await page.getByText('REVOKED', { exact: true }).waitFor();
-    const rejected = page.waitForResponse(r => r.url().includes('/api/v1/ethereum/balance/'));
-    await page.getByRole('button', { name: 'Get Balance', exact: true }).click();
-    assert.equal((await rejected).status(), 401, 'Revoked API key must fail');
-    await page.screenshot({ path: path.join(screenshots, 'blockchain.png'), fullPage: true });
+    const [rejected] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/v1/ethereum/balance/')),
+      page.getByRole('button', { name: 'Get Balance', exact: true }).click()
+    ]);
+    assert.equal(rejected.status(), 401, 'Revoked API key must fail');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(screenshots, 'blockchain.png') });
     console.log('PASS Blockchain: registration, full key, query and revocation through browser');
 
     await page.goto(process.env.KUBERNETES_URL || 'http://127.0.0.1:3200');
     await page.getByRole('heading', { name: 'Kubernetes Demo Application' }).waitFor();
     await page.getByText('"podName": "local-process"', { exact: false }).waitFor();
-    await page.screenshot({ path: path.join(screenshots, 'kubernetes.png'), fullPage: true });
+    await page.screenshot({ path: path.join(screenshots, 'kubernetes.png') });
     console.log('PASS Kubernetes: browser loads backend data');
 
     await page.goto(process.env.VOICE_URL || 'http://127.0.0.1:8090');
@@ -112,8 +141,16 @@ const { randomUUID } = require('node:crypto');
     await page.getByText('Event saved locally.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Replay same event' }).click();
     await page.getByText('Duplicate recognized. No additional draft created.', { exact: true }).waitFor();
-    await page.screenshot({ path: path.join(screenshots, 'voice.png'), fullPage: true });
+    await page.screenshot({ path: path.join(screenshots, 'voice.png') });
     console.log('PASS Voice simulation: draft creation and duplicate handling');
     assert.deepEqual(errors, [], 'No uncaught browser exceptions');
+  } catch (error) {
+    fs.writeFileSync(path.join(screenshots, 'failure.json'), JSON.stringify({
+      message: error.message, browserErrors: errors, pages: context.pages().map(p => p.url())
+    }, null, 2));
+    await Promise.allSettled(context.pages().map((p, index) =>
+      p.screenshot({ path: path.join(screenshots, `failure-${index}.png`), fullPage: true })
+    ));
+    throw error;
   } finally { await context.close(); await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

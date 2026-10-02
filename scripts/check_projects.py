@@ -31,7 +31,7 @@ def main():
         parser.error("Node is required. Install Node or provide --node PATH.")
     errors = []
     counts = {"json": 0, "python": 0, "javascript": 0}
-    for base in [ROOT / "portfolio-projects", ROOT / "trace-stores"]:
+    for base in [ROOT / "portfolio-projects", ROOT / "trace-stores", ROOT / "scripts", ROOT / "legacy-tests"]:
         for path in source_files(base):
             rel = path.relative_to(ROOT)
             if not path.is_file() or any(part in SKIP for part in rel.parts):
@@ -43,7 +43,7 @@ def main():
                 elif path.suffix == ".py":
                     compile(path.read_bytes(), str(rel), "exec")
                     counts["python"] += 1
-                elif path.suffix == ".js" and not ("frontend" in rel.parts and "src" in rel.parts):
+                elif path.suffix in {".js", ".mjs", ".cjs"} and not (path.suffix == ".js" and "frontend" in rel.parts and "src" in rel.parts):
                     result = subprocess.run([args.node, "--check", str(path)], capture_output=True, text=True, timeout=30)
                     if result.returncode:
                         raise ValueError(result.stderr.strip())

@@ -23,9 +23,12 @@ variable "cluster_name" {
 }
 
 variable "kubernetes_version" {
-  description = "Kubernetes version for EKS"
+  description = "EKS version currently supported in the target AWS region; select explicitly before planning"
   type        = string
-  default     = "1.28"
+  validation {
+    condition     = can(regex("^1\\.[0-9]+$", var.kubernetes_version))
+    error_message = "Specify an EKS minor version such as 1.xx after verifying regional support."
+  }
 }
 
 variable "vpc_cidr" {

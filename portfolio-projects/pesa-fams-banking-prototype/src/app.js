@@ -8,6 +8,23 @@ const { branches, categoryProfiles, demoUsers, reportCatalog, statusPalette } = 
 const { AS_OF_DATE, buildBaseData, buildSchedule } = require("./data/generator");
 const { buildReportPack, buildReportCsv, buildReportExcelXml, buildPrintableHtml } = require("./domain/reporting");
 
+// Only advertise actions implemented by the in-memory demonstration. Database
+// onboarding, import, approval-queue and administration routes are not present.
+const prototypeActions = {
+  finance_admin: ["workflows.advance", "depreciation.run", "depreciation.approve", "reconciliation.run", "assets.verify"],
+  it_admin: ["workflows.advance", "depreciation.run", "reconciliation.run"],
+  operations: ["workflows.advance.branch", "assets.verify"],
+  admin_user: ["workflows.advance.branch", "assets.verify"],
+  auditor: [],
+};
+const isBranchUser = (user) => ["operations", "admin_user"].includes(user.role);
+
+function prototypePermissions(user) {
+  return ["meta.read", "dashboard.read", isBranchUser(user) ? "assets.read.branch" : "assets.read",
+    "workflows.read", "depreciation.read", "reconciliation.read", "reports.read", "reports.export", "audit.read",
+    ...(prototypeActions[user.role] || [])];
+}
+
 function roleLabel(role) {
   return {
     finance_admin: "Finance Administrator",
@@ -30,7 +47,7 @@ function createApp() {
 
   const sanitizeUser = (user) => {
     const branch = branches.find((item) => item.code === user.branchCode);
-    return { id: user.id, email: user.email, name: user.name, role: user.role, roleLabel: roleLabel(user.role), title: user.title, branchCode: user.branchCode, branchName: branch?.name || "All Branches" };
+    return { id: user.id, email: user.email, name: user.name, role: user.role, roleLabel: roleLabel(user.role), title: user.title, branchCode: user.branchCode, branchName: branch?.name || "All Branches", permissions: prototypePermissions(user) };
   };
 
   const addAudit = (user, action, entity, detail) => {
@@ -53,12 +70,12 @@ function createApp() {
     return next();
   };
 
-  const scopedAssets = (user) => (user.role === "operations" ? state.assets.filter((asset) => asset.branchCode === user.branchCode) : state.assets);
+  const scopedAssets = (user) => (isBranchUser(user) ? state.assets.filter((asset) => asset.branchCode === user.branchCode) : state.assets);
   const assetView = (asset) => ({ ...asset, statusLabel: statusPalette[asset.status]?.label || asset.status, roleTone: statusPalette[asset.status]?.tone || "muted" });
   const reportPackFor = (user, report) => buildReportPack(report, scopedAssets(user), {
     generatedAt: new Date().toISOString(),
     generatedBy: user.name,
-    scopeLabel: user.role === "operations" ? `${sanitizeUser(user).branchName} only` : "All branches",
+    scopeLabel: isBranchUser(user) ? `${sanitizeUser(user).branchName} only` : "All branches",
     exchangeRateToCdf: state.depreciationRuns[state.depreciationRuns.length - 1]?.exchangeRateUsed || 2850,
     reconciliation: state.reconciliation
   });
@@ -76,7 +93,7 @@ function createApp() {
       statusBreakdown: Object.keys(statusPalette).map((status) => ({ status, label: statusPalette[status].label, count: assets.filter((asset) => asset.status === status).length })),
       depreciationTrend: state.depreciationRuns.map((run) => ({ period: run.period, totalUSD: run.totalDepreciationUSD, totalCDF: run.totalDepreciationCDF })),
       recentActivity: state.recentActivity.slice(0, 10),
-      branchSummary: user.role === "operations" ? state.branchSummary.filter((branch) => branch.branchCode === user.branchCode) : state.branchSummary.slice(0, 10),
+      branchSummary: isBranchUser(user) ? state.branchSummary.filter((branch) => branch.branchCode === user.branchCode) : state.branchSummary.slice(0, 10),
       currentRun: state.depreciationRuns[state.depreciationRuns.length - 1]
     };
   };
@@ -95,8 +112,9 @@ function createApp() {
   });
 
   app.get("/api/meta", requireAuth, (req, res) => res.status(200).json({
+    mode: "prototype",
     user: sanitizeUser(req.user),
-    branches: req.user.role === "operations" ? branches.filter((branch) => branch.code === req.user.branchCode) : branches,
+    branches: isBranchUser(req.user) ? branches.filter((branch) => branch.code === req.user.branchCode) : branches,
     categories: categoryProfiles.map((category) => ({ key: category.key, label: category.label, method: category.method, usefulLifeMonths: category.usefulLifeMonths })),
     statuses: Object.entries(statusPalette).map(([status, definition]) => ({ status, label: definition.label }))
   }));
@@ -121,7 +139,7 @@ function createApp() {
     const total = assets.length;
     const totalPages = Math.max(Math.ceil(total / query.pageSize), 1);
     const items = assets.slice((query.page - 1) * query.pageSize, query.page * query.pageSize).map(assetView);
-    return res.status(200).json({ items, total, page: query.page, pageSize: query.pageSize, totalPages, scope: req.user.role === "operations" ? "branch_only" : "all_branches" });
+    return res.status(200).json({ items, total, page: query.page, pageSize: query.pageSize, totalPages, scope: isBranchUser(req.user) ? "branch_only" : "all_branches" });
   });
 
   app.get("/api/assets/:id", requireAuth, (req, res) => {
@@ -131,7 +149,7 @@ function createApp() {
   });
 
   app.get("/api/lifecycle", requireAuth, (req, res) => {
-    const visibleBranch = req.user.role === "operations" ? req.user.branchCode : null;
+    const visibleBranch = isBranchUser(req.user) ? req.user.branchCode : null;
     const cards = visibleBranch ? state.lifecycleCards.filter((card) => card.asset.branchCode === visibleBranch) : state.lifecycleCards;
     return res.status(200).json({ columns: { pendingTransfers: cards.filter((card) => card.column === "pendingTransfers"), inTransit: cards.filter((card) => card.column === "inTransit"), pendingDisposals: cards.filter((card) => card.column === "pendingDisposals"), pendingImpairments: cards.filter((card) => card.column === "pendingImpairments") } });
   });
@@ -139,10 +157,12 @@ function createApp() {
   app.post("/api/lifecycle/:id/advance", requireAuth, requireRole("finance_admin", "admin_user", "operations", "it_admin"), (req, res) => {
     const card = state.lifecycleCards.find((item) => item.id === req.params.id);
     if (!card) return res.status(404).json({ error: "Workflow item not found." });
-    if (req.user.role === "operations" && card.asset.branchCode !== req.user.branchCode) return res.status(403).json({ error: "Operations users can only action workflows in their branch." });
+    if (isBranchUser(req.user) && card.asset.branchCode !== req.user.branchCode) return res.status(403).json({ error: "Branch users can only action workflows in their branch." });
+    if (card.column === "completed") return res.status(409).json({ error: "This workflow is already complete." });
     const previousColumn = card.column;
     card.column = card.nextColumn;
-    addAudit(req.user, "WORKFLOW_ADVANCE", card.asset.assetId, `${card.title} moved from ${previousColumn} to ${card.nextColumn}`);
+    if (card.column === "inTransit") { card.nextColumn = "completed"; card.actionLabel = "Confirm Receipt"; }
+    addAudit(req.user, "WORKFLOW_ADVANCE", card.asset.assetId, `${card.title} moved from ${previousColumn} to ${card.column}`);
     return res.status(200).json({ message: `${card.title} advanced successfully.`, card });
   });
 
@@ -150,30 +170,36 @@ function createApp() {
 
   app.post("/api/depreciation/run", requireAuth, requireRole("finance_admin", "it_admin"), (req, res) => {
     const currentRun = state.depreciationRuns[state.depreciationRuns.length - 1];
-    currentRun.status = "DRAFT";
+    if (currentRun.status === "POSTED") return res.status(409).json({ error: "This demonstration period is already posted. Restart the prototype to reset its sample data." });
+    currentRun.status = "PENDING_APPROVAL";
+    currentRun.runByUserId = req.user.id;
     currentRun.runBy = req.user.name;
-    currentRun.summary = "Depreciation recalculated with current exchange rate. Ready for approval.";
+    currentRun.summary = "Sample depreciation batch prepared. A different finance user must approve the simulated posting.";
     currentRun.failureCount = 2;
     currentRun.glBatchReference = null;
+    currentRun.approvedBy = null;
+    currentRun.approvedAt = null;
+    currentRun.postedAt = null;
     addAudit(req.user, "DEPRECIATION_RUN", currentRun.period, `Depreciation run prepared for ${currentRun.period}`);
     return res.status(200).json({ message: "Depreciation run prepared for approval.", currentRun });
   });
 
   app.post("/api/depreciation/approve", requireAuth, requireRole("finance_admin"), (req, res) => {
     const currentRun = state.depreciationRuns[state.depreciationRuns.length - 1];
-    if (currentRun.status !== "DRAFT") return res.status(409).json({ error: "The current run is not awaiting approval." });
+    if (!["DRAFT", "PENDING_APPROVAL"].includes(currentRun.status)) return res.status(409).json({ error: "The current run is not awaiting approval." });
+    if (!currentRun.runByUserId || currentRun.runByUserId === req.user.id) return res.status(409).json({ error: "The preparer cannot approve their own batch. Use a different finance checker account." });
     currentRun.status = "POSTED";
     currentRun.approvedBy = req.user.name;
     currentRun.approvedAt = new Date().toISOString();
     currentRun.postedAt = new Date().toISOString();
     currentRun.glBatchReference = `BATCH-${currentRun.period.replace("-", "")}-4823`;
-    currentRun.summary = "Posted to Finacle. Two entries held for manual retry review.";
-    addAudit(req.user, "DEPRECIATION_APPROVE", currentRun.period, `Approved and posted depreciation batch ${currentRun.glBatchReference}`);
-    return res.status(200).json({ message: "Depreciation batch approved and posted.", currentRun });
+    currentRun.summary = "Simulated GL posting approved. No external banking system was contacted; two sample exceptions remain for review.";
+    addAudit(req.user, "DEPRECIATION_APPROVE", currentRun.period, `Approved simulated depreciation posting ${currentRun.glBatchReference}`);
+    return res.status(200).json({ message: "Depreciation batch approved with simulated GL posting.", currentRun });
   });
 
   app.get("/api/reconciliation", requireAuth, (_req, res) => res.status(200).json(state.reconciliation));
-  app.post("/api/reconciliation/run", requireAuth, requireRole("finance_admin", "auditor", "it_admin"), (req, res) => {
+  app.post("/api/reconciliation/run", requireAuth, requireRole("finance_admin", "it_admin"), (req, res) => {
     state.reconciliation.lastRunAt = new Date().toISOString();
     addAudit(req.user, "GL_RECONCILE", state.reconciliation.period, `Reconciliation run executed for ${state.reconciliation.period}`);
     return res.status(200).json({ message: "Reconciliation refreshed.", reconciliation: state.reconciliation });
@@ -235,7 +261,7 @@ function createApp() {
     let logs = state.auditLogs;
     if (action) logs = logs.filter((log) => log.action === action);
     if (user) logs = logs.filter((log) => log.user.toLowerCase().includes(user));
-    if (req.user.role === "operations") logs = logs.filter((log) => log.branchName === sanitizeUser(req.user).branchName);
+    if (isBranchUser(req.user)) logs = logs.filter((log) => log.branchName === sanitizeUser(req.user).branchName);
     return res.status(200).json({ items: logs.slice(0, 80) });
   });
 
@@ -255,8 +281,8 @@ function createApp() {
     return res.status(200).json({ message: "Verification submitted.", asset: assetView(asset) });
   });
 
-  app.use((req, res, next) => {
-    if (req.path.startsWith("/api/")) return next();
+  app.use((req, res) => {
+    if (req.path.startsWith("/api/")) return res.status(404).json({ error: "This endpoint is unavailable in prototype mode." });
     return res.sendFile(path.join(__dirname, "..", "public", "index.html"));
   });
 

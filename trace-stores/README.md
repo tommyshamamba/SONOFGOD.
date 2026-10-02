@@ -43,7 +43,7 @@ The browser calls the API directly. Image inference runs in a thread pool and is
 
 ## Run locally
 
-For the local setup and tests, use Python 3.12 and Node.js 24 with npm. Commands below assume `python` invokes Python 3.12. The frontend test script uses `--test-isolation=none`, supported under that flag name in Node 24; see the [Node CLI documentation](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode). The existing CI workflow still selects Node 22 and needs a runtime or test-command update. Dependency versions are recorded in the [Python requirements](services/trace-api/requirements.txt) and [frontend package manifest](apps/storefront/package.json); the frontend uses Next.js 14 and React 18.
+For the local setup and tests, use Python 3.12 and Node.js 24 with npm. Commands below assume `python` invokes Python 3.12. The frontend test script uses `--test-isolation=none`, supported under that flag name in Node 24; see the [Node CLI documentation](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode). The workflow reads the same Node version from the repository `.nvmrc`. Dependency versions are recorded in the [Python requirements](services/trace-api/requirements.txt) and [frontend package manifest](apps/storefront/package.json); the frontend uses Next.js 15 and React 19.
 
 Start each terminal at the repository root. The first setup requires internet access for dependencies and model weights.
 
@@ -111,7 +111,7 @@ $env:REQUIRE_MODEL = "true"
 docker compose up --build
 ```
 
-The same storefront and API URLs apply. Compose mounts `models/` read-only and starts a development storefront on Node 20. Run the documented frontend tests with local Node 24; the Compose development service does not run them. Stop services with Ctrl+C, then run `docker compose down` from `trace-stores/`.
+The same storefront and API URLs apply. Compose mounts `models/` read-only and starts a development storefront on Node 24.19.0, matching repository frontend tests. The Compose development service does not run tests automatically. Stop services with Ctrl+C, then run `docker compose down` from `trace-stores/`.
 
 ## API and configuration
 

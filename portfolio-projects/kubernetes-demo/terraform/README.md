@@ -1,199 +1,41 @@
-# Terraform Infrastructure for Kubernetes Demo
+# Kubernetes Demo infrastructure example
 
-This Terraform configuration provisions AWS infrastructure for the Kubernetes Demo application, including EKS cluster, ALB, and supporting resources.
+This Terraform configuration describes an AWS VPC, EKS cluster and managed nodes, an ALB, log groups, an EBS storage class and an ExternalDNS IAM role. It is an infrastructure example, separate from the [runnable local application](../README.md). No AWS deployment or end-to-end cloud rollout has been verified.
 
-## Prerequisites
+## Validate without creating resources
 
-- Terraform >= 1.0
-- AWS CLI configured with appropriate credentials
-- AWS account with appropriate permissions
-- S3 bucket for Terraform state
+From this directory, with Terraform installed:
 
-## Quick Start
-
-### 1. Configure Backend
-
-Update the backend configuration in `main.tf` or create a `backend.tf` file:
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket         = "your-terraform-state-bucket"
-    key            = "kubernetes-demo/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "your-terraform-locks-table"
-  }
-}
+```sh
+terraform init -backend=false -input=false
+terraform fmt -check
+terraform validate
 ```
 
-### 2. Create State Bucket and Lock Table
+Initialization downloads the pinned modules and providers; disabling the backend avoids accessing remote state. Schema validation does not need AWS credentials, create resources or test AWS availability. Commit `.terraform.lock.hcl`, and keep `.terraform/`, private variable files and state out of Git.
 
-```bash
-aws s3api create-bucket \
-  --bucket your-terraform-state-bucket \
-  --region us-east-1 \
-  --create-bucket-configuration LocationConstraint=us-east-1
+## Configuration before a sandbox plan
 
-aws dynamodb create-table \
-  --table-name your-terraform-locks-table \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-```
+1. Edit the existing S3 backend in `main.tf` to reference your own state bucket and lock table. Create those separately and restrict access to state. Do not add a duplicate backend block.
+2. Copy `terraform.tfvars.example` to a private `terraform.tfvars` file. Supply `kubernetes_version` explicitly after checking support in the chosen AWS region. There is no fixed version default because regional availability and support change.
+3. Review the pinned EKS/VPC modules, provider versions, node image compatibility, permissions and subnet choices against the selected EKS version. Successful validation does not establish compatibility with a live cluster.
+4. If enabling HTTPS, provide an ACM certificate from the ALB's region. The empty certificate setting creates an HTTP-only listener for the example; it is unsuitable for credentials or sensitive traffic.
+5. Review a plan in an isolated account before any apply. EKS, nodes, the ALB, NAT gateway and logs can incur charges. This repository does not establish a current cost estimate.
 
-### 3. Configure Variables
+The configuration enables both public and private EKS API endpoints. The public endpoint is not restricted to particular client CIDRs by this example. Restrict access or disable the public endpoint before a real deployment, and ensure the Terraform runner can reach the selected API endpoint. The Kubernetes provider needs the AWS CLI; it requests tokens using the actual cluster name and configured region.
 
-Copy the example variables file:
+## Cloud integration still required
 
-```bash
-cp terraform.tfvars.example terraform.tfvars
-```
+- The Terraform ALB target group has no automatic connection to the Kubernetes frontend service. Choose and configure an ingress approach, such as an AWS Load Balancer Controller target binding. The local `LoadBalancer` service and Terraform ALB are separate resources.
+- The EBS CSI addon and storage class need suitable IAM permissions for volume provisioning. The configuration does not create an addon service-account IAM role or prove volume attachment works.
+- Creating log groups does not ship container logs. Add and verify a log collector before claiming application observability.
+- The ExternalDNS role is an IAM example only; ExternalDNS itself is not installed. Review and restrict its hosted-zone permissions before use.
+- Application images, secrets, metrics-server/HPA behavior, DNS, TLS, Kubernetes access, network policies and rollout verification require configuration and testing.
 
-Edit `terraform.tfvars` with your specific values.
+The EKS node group defines minimum, desired and maximum sizes; automatic node scaling requires a separately configured autoscaler. The application HPA scales pods only when a metrics API is available.
 
-### 4. Initialize Terraform
+## Useful outputs
 
-```bash
-terraform init
-```
+`eks_cluster_name`, `eks_cluster_endpoint`, `vpc_id`, subnet IDs and `kubeconfig_command` help connect subsequent deployment steps. `alb_dns_name` identifies the standalone ALB, not a verified working application URL. The legacy `eks_cluster_id` output is populated only for EKS on Outposts; use `eks_cluster_name` for regional clusters.
 
-### 5. Plan and Apply
-
-```bash
-terraform plan
-terraform apply
-```
-
-### 6. Configure kubectl
-
-```bash
-aws eks update-kubeconfig --name kubernetes-demo-cluster --region us-east-1
-```
-
-### 7. Deploy Kubernetes Resources
-
-```bash
-cd ..
-kubectl apply -f k8s/
-```
-
-## Infrastructure Components
-
-### Network
-- **VPC**: 10.0.0.0/16 with public and private subnets across 2 AZs
-- **NAT Gateway**: For private subnet internet access
-- **Security Groups**: For ALB and EKS
-
-### Compute
-- **EKS Cluster**: Kubernetes 1.28 with managed node groups
-- **Node Groups**: t3.small instances (2-4 nodes, auto-scaling)
-- **Cluster Addons**: CoreDNS, kube-proxy, VPC-CNI, EBS CSI driver
-
-### Networking
-- **Application Load Balancer**: For frontend service
-- **Target Groups**: HTTP/80 and HTTPS/443
-- **SSL Certificate**: Use ACM certificate (configure via variable)
-
-### Storage
-- **EBS Storage Class**: GP3 storage for dynamic provisioning
-
-### Monitoring
-- **CloudWatch Log Groups**: For backend and frontend logs
-- **Log Retention**: 7 days (configurable)
-
-### Optional
-- **ExternalDNS IAM Role**: For automatic DNS management
-
-## Variables
-
-### Optional Variables
-- `aws_region`: AWS region for deployment (default: us-east-1)
-- `environment`: Environment name (default: dev)
-- `project_name`: Project name for resource naming
-- `cluster_name`: EKS cluster name
-- `kubernetes_version`: Kubernetes version
-- `vpc_cidr`: VPC CIDR block
-- `instance_types`: EC2 instance types
-- `node_group_min_size/max_size/desired_size`: Node group scaling
-- `acm_certificate_arn`: ACM certificate for HTTPS
-- `log_retention_days`: CloudWatch log retention
-
-See `variables.tf` for complete list.
-
-## Outputs
-
-After successful deployment, Terraform outputs important values:
-
-- `vpc_id`, `vpc_cidr`: Network information
-- `eks_cluster_id`, `eks_cluster_endpoint`: EKS cluster details
-- `alb_dns_name`: Load balancer URL
-- `kubeconfig_command`: Command to configure kubectl
-- `external_dns_role_arn`: IAM role for ExternalDNS
-
-## Cost Estimation
-
-Approximate monthly costs (us-east-1, dev environment):
-
-- EKS Cluster: $73/month
-- EKS Nodes (2x t3.small): ~$40/month
-- ALB: ~$22/month
-- NAT Gateway: ~$32/month
-- CloudWatch Logs: ~$5/month
-- **Total**: ~$170/month
-
-## Scaling
-
-### Horizontal Pod Autoscaler
-The Kubernetes HPA configuration automatically scales pods based on CPU/memory usage.
-
-### Cluster Autoscaler
-EKS node groups can be configured with cluster autoscaler for automatic node scaling.
-
-## Security
-
-### Best Practices Implemented
-- VPC with private subnets for workloads
-- Security groups with least privilege
-- EBS encryption enabled
-- No public access to cluster control plane
-
-### Additional Security Recommendations
-- Enable AWS GuardDuty
-- Configure AWS Security Hub
-- Enable VPC Flow Logs
-- Implement network policies in Kubernetes
-- Use IRSA (IAM Roles for Service Accounts)
-
-## Troubleshooting
-
-### Terraform State Lock
-```bash
-terraform force-unlock <LOCK_ID>
-```
-
-### EKS Cluster Access
-```bash
-aws eks update-kubeconfig --name kubernetes-demo-cluster --region us-east-1
-kubectl get nodes
-```
-
-### Destroy Infrastructure
-```bash
-terraform destroy
-```
-
-## Production Considerations
-
-1. **Multi-Environment**: Use separate Terraform workspaces
-2. **State Management**: Use remote state with S3 and DynamoDB locks
-3. **Monitoring**: Add CloudWatch alarms, Prometheus/Grafana
-4. **CI/CD**: Integrate Terraform with GitHub Actions
-5. **Cost Optimization**: Use Savings Plans for production
-
-## Modules
-
-This configuration uses Terraform modules:
-- `terraform-aws-modules/vpc/aws`: VPC and networking
-- `terraform-aws-modules/eks/aws`: EKS cluster
+For a credential-free application demonstration, follow the local Node.js or Docker Compose instructions in the [project README](../README.md).

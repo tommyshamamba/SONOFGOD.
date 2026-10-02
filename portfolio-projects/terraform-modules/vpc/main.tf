@@ -123,13 +123,24 @@ resource "aws_route_table" "public" {
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.this.id
 
-  dynamic "route" {
-    for_each = var.enable_nat_gateway ? [1] : []
-    content {
-      cidr_block     = "0.0.0.0/0"
-      nat_gateway_id = aws_nat_gateway.this[0].id
-    }
-  }
+  # route is optional/computed in the provider. An explicit [] removes a previous
+  # NAT route when disabling egress; omitting a block leaves routes unmanaged.
+  route = var.enable_nat_gateway ? [{
+    cidr_block                 = "0.0.0.0/0"
+    nat_gateway_id             = aws_nat_gateway.this[0].id
+    carrier_gateway_id         = null
+    core_network_arn           = null
+    destination_prefix_list_id = null
+    egress_only_gateway_id     = null
+    gateway_id                 = null
+    ipv6_cidr_block            = null
+    local_gateway_id           = null
+    network_interface_id       = null
+    odb_network_arn            = null
+    transit_gateway_id         = null
+    vpc_endpoint_id            = null
+    vpc_peering_connection_id  = null
+  }] : []
 
   tags = merge(
     {

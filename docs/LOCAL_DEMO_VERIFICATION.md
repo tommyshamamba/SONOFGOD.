@@ -1,5 +1,7 @@
 # Local demo fix verification
 
+**Historical report:** the results and open items below describe September 28, 2026. Use the [current verification record](VERIFICATION.md) for subsequent repairs, hosted CI and browser results. Historical test totals are not current suite totals.
+
 September 28, 2026. Scope: local working demonstrations, as selected by the user. This extends the earlier baseline report.
 
 ## Code defects fixed

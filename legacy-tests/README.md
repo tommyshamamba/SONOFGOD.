@@ -30,10 +30,10 @@ overridden to the patched 0.2.7 release; its public API remains compatible. ABI
 compatibility is checked against both bots' embedded request/management ABIs;
 no hand-edited ABI artifact is needed.
 
-Verified locally on 30 September 2026 with Node 24.19.0: **21 EVM tests and
-10 Python tests passed**. Power's compiled runtime is **23,554 bytes**, below
-the 24,576-byte EIP-170 limit. The registry-backed full dependency audit reported
-zero known vulnerabilities for this test toolchain at that time.
+The suite now covers the repository's own ERC-1967 proxy and includes **23 EVM
+tests and 16 Python tests**. See [current verification](../docs/VERIFICATION.md)
+for the tested commit and results. Compilation enforces the 24,576-byte EIP-170
+limit; no contract is deployed outside the test VM.
 
 ## Changes exercised
 
@@ -50,6 +50,11 @@ zero known vulnerabilities for this test toolchain at that time.
 - Successful arbitrage preserves preexisting borrowed-asset balances; an old
   reserve cannot subsidize an unprofitable trade. `withdrawProfit(address)` is
   implemented for the owner's idle residual-token withdrawal.
+- Liquidation preserves preexisting collateral; only collateral gained during
+  the liquidation may fund its swap. Both reserve-preservation cases are tested.
+- Bot submission requires explicit `ALLOW_LIVE_TRANSACTIONS=true`; it is disabled
+  by default. Regression checks cover the opt-in gate, private-relay hex encoding
+  and the WebSocket message normalizer and timeout handling.
 - Estimation reads a nonce without allocating one. Submission signs under a
   shared lock and advances the nonce only after RPC acceptance. Ambiguous sends
   (including cancellation) block subsequent submissions rather than reusing an
@@ -63,7 +68,8 @@ profitable trading**. The profitable swap output is deliberately manufactured
 by the fixture. Network addresses, market liquidity, price/MEV behavior, real
 lender and router deployments, all DEX adapters, liquidation strategies, bridge
 integrations and production bot operation still require independent validation.
-No mainnet fork or live transaction was used.
+No mainnet fork or live transaction was used. The full bots' external runtime
+dependencies and integrations remain unverified by these extracted unit tests.
 
 The nonce helper coordinates one process with exclusive account ownership. Its
 state is not durable across restarts and private-relay acceptance does not prove

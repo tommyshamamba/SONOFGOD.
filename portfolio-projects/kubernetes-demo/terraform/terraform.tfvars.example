@@ -7,7 +7,8 @@ project_name  = "kubernetes-demo"
 cluster_name  = "kubernetes-demo-cluster"
 
 # Kubernetes Configuration
-kubernetes_version = "1.28"
+# Required: set a currently supported regional EKS version before planning.
+# kubernetes_version = "<supported-version>"
 
 # Network Configuration
 vpc_cidr              = "10.0.0.0/16"

@@ -1,6 +1,6 @@
 # Kubernetes Demo Project
 
-For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/VERIFICATION.md).
 
 A practical microservices application demonstrating key Kubernetes concepts including Deployments, Services, ConfigMaps, Secrets, and Horizontal Pod Autoscaling.
 
@@ -59,7 +59,7 @@ docker compose up --build
 docker compose down
 ```
 
-The Compose image runs the installed production server directly; no source mounts or development watcher are required. Backend readiness gates frontend startup. Container execution still requires a running Docker engine; a live Kubernetes rollout has not been verified here.
+The Compose image runs the installed production server directly; no source mounts or development watcher are required. Backend readiness gates frontend startup. GitHub Actions verifies both container startup and the proxied API. Local container execution requires a running Docker engine; a live Kubernetes rollout has not been verified here.
 
 ## Kubernetes Deployment
 
@@ -196,7 +196,7 @@ kubectl scale deployment backend-deployment --replicas=5
 # View ConfigMap
 kubectl get configmap app-config -o yaml
 
-# View Secret (decoded)
+# View Secret metadata and base64-encoded values
 kubectl get secret app-secret -o yaml
 
 # Delete all resources

@@ -19,8 +19,13 @@ output "public_subnet_ids" {
 }
 
 output "eks_cluster_id" {
-  description = "EKS cluster ID"
+  description = "EKS Outposts cluster ID, which is empty for regional EKS clusters; use eks_cluster_name"
   value       = module.eks.cluster_id
+}
+
+output "eks_cluster_name" {
+  description = "EKS cluster name for regional cluster access and AWS CLI commands"
+  value       = module.eks.cluster_name
 }
 
 output "eks_cluster_endpoint" {
@@ -60,7 +65,7 @@ output "cloudwatch_log_group_frontend" {
 
 output "kubeconfig_command" {
   description = "Command to configure kubectl"
-  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_id} --region ${var.aws_region}"
+  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.aws_region}"
 }
 
 output "external_dns_role_arn" {

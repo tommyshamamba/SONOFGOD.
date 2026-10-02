@@ -2,13 +2,13 @@
 
 **Upload artwork, preview a transparent PNG, and explore custom-print products.**
 
-This Next.js 14 / React 18 frontend connects to the [Trace image API](../../README.md). It displays the actual returned image, identifies ONNX or development-fallback processing, offers PNG download, and maintains a local demo cart.
+This Next.js 15 / React 19 frontend connects to the [Trace image API](../../README.md). It displays the actual returned image, identifies ONNX or development-fallback processing, offers PNG download, and maintains a local demo cart.
 
 [Project overview and API setup](../../README.md) · [UI source](app/page.tsx) · [Upload and cart logic](lib/creator.mjs) · [Tests](tests/creator.test.mjs)
 
 ## Local launch
 
-Use Node.js 24 with npm for the local setup and documented test commands. The test script uses `--test-isolation=none`; that flag was renamed after Node 22, as documented in the [Node CLI reference](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode). The existing repository workflow still selects Node 22 and needs a runtime or test-command update. Start the API using the [Bash or PowerShell setup](../../README.md#1-start-the-api), then open another terminal at the repository root:
+Use Node.js 24 with npm for the local setup and documented test commands. The test script uses `--test-isolation=none`; that flag was renamed after Node 22, as documented in the [Node CLI reference](https://nodejs.org/download/release/v24.19.0/docs/api/cli.html#--test-isolationmode). The repository workflow reads Node 24.19.0 from `.nvmrc`. Start the API using the [Bash or PowerShell setup](../../README.md#1-start-the-api), then open another terminal at the repository root:
 
 ```sh
 cd trace-stores/apps/storefront
@@ -80,12 +80,7 @@ To inspect the production build locally, stop the development server on port 300
 npm start
 ```
 
-The API must remain running. In restricted Windows environments that cannot create Next.js build worker processes, the existing configuration supports:
-
-```powershell
-$env:BUILD_WITH_THREADS = "1"
-npm run build
-```
+The API must remain running. Next.js production builds require permission to start worker processes; restricted application sandboxes may block them. GitHub Actions verifies the production build on Linux. There is no supported worker-thread workaround in this configuration.
 
 For a browser check, upload and replace an image, verify PNG download and the processor label, cancel an upload, and confirm that a service error does not show a successful result. Then add multiple products, change quantities, remove an item, refresh to check persistence, and clear the cart. Node tests exercise client logic; these manual checks cover the rendered workflow.
 

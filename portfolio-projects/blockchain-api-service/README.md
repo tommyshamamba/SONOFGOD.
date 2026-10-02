@@ -2,7 +2,7 @@
 
 A Node.js API and React dashboard for accounts, API keys, rate limits and blockchain queries. The default local demonstration returns labeled, deterministic blockchain data. Transaction broadcasting is disabled.
 
-See the [local demo guide](../../docs/LOCAL_DEMOS.md) and [verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+See the [local demo guide](../../docs/LOCAL_DEMOS.md) and [verification results](../../docs/VERIFICATION.md).
 
 ## Run locally
 
@@ -35,7 +35,7 @@ docker compose up --build -d --wait
 
 The Compose project binds published ports to this computer, uses Redis for rate limiting, and stores JSON data in the `blockchain-data` named volume. The frontend proxies API requests to the backend. It waits for backend readiness; the backend waits for Redis readiness. Run `docker compose down` to stop; keep the named volume to preserve accounts and keys.
 
-Both Compose files in this portfolio use distinct host ports. Docker Desktop's Linux engine must be running. Container builds and a live Kubernetes rollout still require verification in a working container environment.
+Both Compose files in this portfolio use distinct host ports. GitHub Actions builds and starts the containers, then checks the dashboard and proxied API. A live Kubernetes rollout remains unverified. For local containers, Docker Desktop's Linux engine must be running.
 
 ## Persistence and crash recovery
 
@@ -101,4 +101,4 @@ The suite checks authentication, key ownership, persistence, rate limiter/provid
 
 ## License
 
-Proprietary — all rights reserved. No additional open-source license is granted here.
+Original owned code follows the repository's [MIT license](../../LICENSE). See [third-party notices](../../THIRD_PARTY_NOTICES.md) for dependency exclusions.

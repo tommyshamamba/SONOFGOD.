@@ -15,7 +15,8 @@
 
 | Document | Purpose |
 | --- | --- |
-| [Local demo verification](LOCAL_DEMO_VERIFICATION.md) | Historical results, tested paths and remaining limitations. |
+| [Current verification](VERIFICATION.md) | Current repair results, hosted checks and remaining limits. |
+| [September local verification](LOCAL_DEMO_VERIFICATION.md) | Historical results and their original scope. |
 | [Source review](REVIEW_REPORT.md) | Earlier review findings and the scope of its checks. |
 | [Prioritized PR roadmap](PR_ROADMAP.md) | Concrete implementation and verification work. |
 | [Production readiness](PRODUCTION_READINESS.md) | Requirements to assess before a production release. |

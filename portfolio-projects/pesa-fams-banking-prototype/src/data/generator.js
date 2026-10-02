@@ -189,11 +189,12 @@ function buildDepreciationRuns(assets) {
       totalDepreciationCDF: totalCDF,
       exchangeRateUsed: 2847 + offset * 9,
       failureCount: offset === 0 ? 2 : offset === 2 ? 1 : 0,
-      runBy: "Jean-Pierre Mbala",
+      runBy: "Eric Tshimanga",
+      runByUserId: "usr-it",
       approvedBy: offset === 0 ? null : "Jean-Pierre Mbala",
       approvedAt: offset === 0 ? null : `2026-${String(Math.max(1, 3 - offset)).padStart(2, "0")}-28T09:45:00Z`,
       postedAt: offset === 0 ? null : `2026-${String(Math.max(1, 3 - offset)).padStart(2, "0")}-28T10:12:00Z`,
-      summary: offset === 0 ? "Ready for checker approval before Finacle posting." : "Posted to Finacle with audit trail captured.",
+      summary: offset === 0 ? "Sample batch ready for finance checker approval and simulated GL posting." : "Sample GL posting with synthetic audit history; no external banking system was contacted.",
       glBatchReference: offset === 0 ? null : `BATCH-${period.replace("-", "")}-${4800 + offset}`
     });
   }
@@ -233,7 +234,7 @@ function buildReconciliation(assets) {
   const famsCdf = assets.filter((asset) => asset.currency === "CDF").reduce((sum, asset) => sum + asset.netBookValue, 0);
   return {
     period: "2026-03",
-    status: "MATCHED",
+    status: "EXCEPTION",
     famsBalanceUSD: roundCurrency(famsUsd),
     famsBalanceCDF: roundCurrency(famsCdf),
     glBalanceUSD: roundCurrency(famsUsd - 1240),

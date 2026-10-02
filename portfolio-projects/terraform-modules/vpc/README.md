@@ -2,6 +2,21 @@
 
 Reusable Terraform module for creating AWS VPC with public and private subnets.
 
+Requires Terraform 1.7 or newer and the AWS provider 5.x or 6.x. It creates one NAT gateway when enabled; this is a demonstration topology, not a NAT gateway per availability zone. Supply an availability zone for each subnet and at least one public subnet when enabling NAT.
+
+Private subnets always have explicit associations with a private route table. With `enable_nat_gateway = false`, that table has no internet default route and `private_route_table_id` remains available. A `moved` block preserves the existing route table address for users upgrading from the earlier counted resource.
+
+## Validation
+
+```sh
+terraform init -backend=false -input=false
+terraform fmt -check -recursive
+terraform validate
+terraform test
+```
+
+Mock-provider tests check private routing and subnet associations with and without NAT. They require no AWS credentials, create no cloud resources and do not establish that an AWS deployment has been tested.
+
 ## Usage
 
 ```hcl

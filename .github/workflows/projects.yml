@@ -4,7 +4,9 @@ concurrency:
   cancel-in-progress: true
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -166,6 +168,9 @@ jobs:
       - run: terraform fmt -check
       - run: terraform init -backend=false -input=false
       - run: terraform validate -no-color
+      - name: Exercise module plans with mock providers
+        if: startsWith(matrix.directory, 'terraform-modules/')
+        run: terraform test -no-color
 
   browser-journeys:
     runs-on: ubuntu-latest
@@ -189,6 +194,7 @@ jobs:
           name: browser-evidence
           path: playwright-report/
           if-no-files-found: warn
+          retention-days: 14
 
   containers:
     runs-on: ubuntu-latest

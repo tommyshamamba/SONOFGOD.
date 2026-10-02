@@ -2,6 +2,21 @@
 
 Reusable Terraform module for creating AWS Application Load Balancers with target groups and listeners.
 
+Requires Terraform 1.7 or newer and the AWS provider 5.x or 6.x. Only application load balancers are supported. The security group created by this module is attached to the ALB alongside any supplied groups. When disabling group creation, supply at least one existing group.
+
+The default HTTPS configuration requires an ACM certificate and target group. An HTTP redirect without HTTPS is rejected during planning. For an explicit HTTP-only demonstration, set `create_https_listener = false` and `http_listener_action_type = "forward"`. Target registration is the caller's responsibility.
+
+## Validation
+
+```sh
+terraform init -backend=false -input=false
+terraform fmt -check -recursive
+terraform validate
+terraform test
+```
+
+The tests use Terraform's mocked AWS provider. They check security group attachment, HTTPS redirects, explicit HTTP forwarding and invalid listener configurations without AWS credentials or cloud resources. They do not verify a live ALB deployment.
+
 ## Usage
 
 ```hcl

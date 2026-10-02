@@ -1,73 +1,51 @@
 # Interview Nailer
 
-For the tested local setup, see the [local demo guide](../../docs/LOCAL_DEMOS.md) and [latest verification results](../../docs/LOCAL_DEMO_VERIFICATION.md).
+Interview preparation with accounts, résumé upload, practice sessions, answer scoring and saved coaching reports. The local demonstration uses deterministic mock AI; live Anthropic responses require separate configuration.
 
-Interview Nailer is a full-stack interview prep app with:
+[Portfolio](../../README.md) · [Local demos](../../docs/LOCAL_DEMOS.md) · [Deployment](DEPLOY.md) · [Verification](../../docs/VERIFICATION.md)
 
-- resume upload and parsing
-- job match analysis
-- STAR answer generation
-- mock interview sessions
-- coaching reports
-- salary negotiation guidance
+## Architecture
 
-## Local quick start
+React and Vite provide the client. Express handles authentication, uploads and structured AI responses. Storage can use a serialized local JSON store for a single process or PostgreSQL for shared persistence. Ownership checks apply to résumés and interview sessions.
 
-### 1. Install dependencies
+## Run locally
 
-```powershell
-cd portfolio-projects/interview-nailer
+Use Node 24.19.0 (the repository `.nvmrc`). From this directory:
+
+```sh
 npm run install:backend
 npm run install:frontend
+npm run build:frontend
+npm --prefix backend start
 ```
 
-### 2. Start backend
+Open http://localhost:5000. With no provider/database settings, development uses `AI_MODE=mock` and `STORAGE_MODE=file`. Use a synthetic account and résumé. The backend serves the built frontend on the same origin.
 
-```powershell
-cd backend
-Copy-Item .env.example .env
-npm run dev
+For frontend development, keep the backend running and start a second terminal in this directory:
+
+```sh
+npm run dev:frontend
 ```
 
-### 3. Start frontend
+The Vite client runs at http://localhost:3001 and proxies `/api` to port 5000. Copy each component's `.env.example` only when changing its configuration. A separate frontend host uses `REACT_APP_API_BASE_URL=https://your-backend.example/api`; rebuild after changing it and configure backend `CLIENT_URL` to the exact frontend origin.
 
-```powershell
-cd ..\frontend
-Copy-Item .env.example .env
-npm start
+## Tests
+
+```sh
+npm --prefix backend test
+npm --prefix frontend test
+npm run build:frontend
 ```
 
-Open `http://localhost:3000`.
+Backend tests cover configuration, response contracts, accounts, uploads, cross-user ownership, full mock interview sessions, concurrent writes and rate limiting. Frontend tests cover API URL resolution for same-origin, split-host and local-network use. The repository browser suite completes every interview question and reloads the coaching report to verify persistence.
 
-## Local modes
+For PostgreSQL tests, configure `STORAGE_MODE=postgres`, `TEST_STORAGE_MODE=postgres` and `DATABASE_URL` for a disposable database whose name begins `interview_test_`; set `DATABASE_SSL=false` only for a local database. Run `npm --prefix backend run db:init` followed by the backend tests. GitHub Actions supplies its own disposable PostgreSQL service.
 
-The default local setup uses:
+## Configuration and limits
 
-- `STORAGE_MODE=file`
-- `AI_MODE=mock`
+- File storage supports one application process. Keep its data file and uploaded content private; hosted persistence uses PostgreSQL.
+- Invalid AI/storage modes fail startup. Production requires a strong signing secret and PostgreSQL. Production mock mode requires the explicit `ALLOW_MOCK_AI=true` setting and remains visibly labeled.
+- Live mode uses `AI_MODE=anthropic`, `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL`. Configure secrets outside Git. Mock tests do not verify a live provider account.
+- The [Render Blueprint](render.yaml) is a deployment example; provisioning, TLS, backups and live provider calls require deployment-specific verification.
 
-That means you can run and demo the app without PostgreSQL or Anthropic.
-
-## Hosting configuration
-
-The included [render.yaml](render.yaml) needs service-root configuration for this multi-project repository. Review the provider's current plans, persistence and schema initialization before deploying. No hosted deployment has been verified in this review. Consult [Render's configuration documentation](https://render.com/docs/blueprint-spec) for current requirements.
-
-## Validation
-
-Run `npm run build:frontend` from this folder to build the UI. There is no automated behavioral test command in the current manifest. The default mock AI mode does not establish real model inference or production agent experience. Review authentication, data isolation and provider integration before internet deployment.
-
-## Real services later
-
-If you want to switch from mock AI to Anthropic later, set:
-
-```env
-AI_MODE=anthropic
-ANTHROPIC_API_KEY=your_key_here
-```
-
-If you want to run PostgreSQL locally instead of file mode, set:
-
-```env
-STORAGE_MODE=postgres
-DATABASE_URL=postgresql://user:password@host:5432/interview_nailer
-```
+See [deployment instructions](DEPLOY.md) and the [current evidence report](../../docs/VERIFICATION.md) for tested scope and remaining work.
