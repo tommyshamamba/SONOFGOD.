@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: python scripts/check_projects.py
@@ -44,7 +44,7 @@ jobs:
         working-directory: portfolio-projects/pesa-fams-banking-prototype
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
@@ -73,7 +73,7 @@ jobs:
         working-directory: trace-stores/apps/storefront
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm ci
@@ -90,7 +90,7 @@ jobs:
         working-directory: portfolio-projects/${{ matrix.project }}/frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
@@ -109,7 +109,7 @@ jobs:
         working-directory: portfolio-projects/${{ matrix.project }}/backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
@@ -131,7 +131,7 @@ jobs:
         working-directory: portfolio-projects/interview-nailer/backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
@@ -177,7 +177,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - uses: actions/setup-python@v5
@@ -245,7 +245,7 @@ jobs:
           - legacy-tests
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - run: npm audit --package-lock-only --audit-level=high
@@ -266,7 +266,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - uses: actions/setup-python@v5
