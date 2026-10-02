@@ -19,12 +19,10 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: blockchain-api-frontend:latest
+        image: blockchain-api-frontend:local
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
-        env:
-        - name: REACT_APP_API_URL
-          value: http://blockchain-api-backend:3000
         resources:
           requests:
             memory: "64Mi"

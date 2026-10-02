@@ -19,7 +19,7 @@ function createProductionApp(env) {
 
   const sendError = (res, error) => {
     const statusCode = error instanceof z.ZodError ? 400 : error.code === "23505" ? 409 : error.statusCode || 500;
-    const message = error instanceof z.ZodError ? "Invalid request data." : error.code === "23505" ? "A record with that identifier already exists." : statusCode >= 500 ? "Unexpected server error." : error.message;
+    const message = statusCode === 400 ? "Invalid request data." : error.code === "23505" ? "A record with that identifier already exists." : statusCode >= 500 ? "Unexpected server error." : error.message;
     res.status(statusCode).json({ error: message });
   };
 
@@ -40,7 +40,7 @@ function createProductionApp(env) {
       if (!token) {
         return res.status(401).json({ error: "Authentication required." });
       }
-      const payload = jwt.verify(token, env.jwtSecret);
+      const payload = jwt.verify(token, env.jwtSecret, { algorithms: ["HS256"] });
       const { user } = await systemService.getCurrentUserContext(env, payload.sub);
       req.currentUser = { id: user.id, role: user.role };
       return next();
@@ -69,8 +69,8 @@ function createProductionApp(env) {
     status: z.string().optional().default(""),
     branch: z.string().optional().default(""),
     category: z.string().optional().default(""),
-    page: z.coerce.number().optional().default(1),
-    pageSize: z.coerce.number().optional().default(12)
+    page: z.coerce.number().int().min(1).max(1000000).optional().default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).optional().default(12)
   });
 
   const assetMutationSchema = z.object({
@@ -138,9 +138,9 @@ function createProductionApp(env) {
 
   const enqueueJobSchema = z.object({
     jobType: z.enum(["monthly-depreciation", "daily-reconciliation", "parallel-run-compare"]),
-    payload: z.record(z.any()).optional().default({}),
-    runAfter: z.string().optional(),
-    maxAttempts: z.coerce.number().int().optional().default(3)
+    payload: z.record(z.string(), z.unknown()).optional().default({}),
+    runAfter: z.iso.datetime({ offset: true }).optional(),
+    maxAttempts: z.coerce.number().int().min(1).max(10).optional().default(3)
   });
 
   const approvalQuerySchema = z.object({
@@ -402,11 +402,16 @@ function createProductionApp(env) {
     res.status(200).json(await systemService.enqueueJob(env, req.currentUser, input));
   }));
 
-  app.use((req, res, next) => {
+  app.use((req, res) => {
     if (req.path.startsWith("/api/")) {
-      return next();
+      return res.status(404).json({ error: "Route not found." });
     }
     return res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+  });
+
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    return sendError(res, error);
   });
 
   return app;

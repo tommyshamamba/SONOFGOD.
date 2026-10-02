@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: k8s-demo-frontend:latest
+        image: k8s-demo-frontend:local
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
         resources:

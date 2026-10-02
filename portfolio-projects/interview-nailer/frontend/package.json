@@ -9,26 +9,19 @@
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.3",
     "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.20.0"
+    "react-router-dom": "7.18.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build"
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "start": "vite --host 127.0.0.1 --configLoader native",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --host 127.0.0.1 --configLoader native"
   },
   "devDependencies": {
-    "react-scripts": "^5.0.1"
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.1"
   },
-  "proxy": "http://localhost:5000",
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "engines": {
+    "node": ">=24.19.0 <25"
   }
 }

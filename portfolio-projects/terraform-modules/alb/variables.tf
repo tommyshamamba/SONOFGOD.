@@ -10,9 +10,13 @@ variable "internal" {
 }
 
 variable "load_balancer_type" {
-  description = "Type of load balancer (application, network, gateway)"
+  description = "This module supports application load balancers"
   type        = string
   default     = "application"
+  validation {
+    condition     = var.load_balancer_type == "application"
+    error_message = "Only application load balancers are supported by the HTTP/HTTPS listeners in this module."
+  }
 }
 
 variable "vpc_id" {
@@ -161,6 +165,10 @@ variable "http_listener_action_type" {
   description = "Action type for HTTP listener (redirect or forward)"
   type        = string
   default     = "redirect"
+  validation {
+    condition     = contains(["redirect", "forward"], var.http_listener_action_type)
+    error_message = "Use redirect or forward for the HTTP listener action."
+  }
 }
 
 variable "create_https_listener" {
@@ -178,7 +186,7 @@ variable "acm_certificate_arn" {
 variable "ssl_policy" {
   description = "SSL policy for HTTPS listener"
   type        = string
-  default     = "ELBSecurityPolicy-2016-08"
+  default     = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 }
 
 variable "enable_deletion_protection" {

@@ -1,6 +1,5 @@
-const localThreads = process.env.BUILD_WITH_THREADS === "1";
+import { fileURLToPath } from "node:url";
 
 export default {
-  // Optional mode for constrained Windows environments that cannot fork workers.
-  ...(localThreads ? { experimental: { workerThreads: true, webpackBuildWorker: false, cpus: 2 } } : {}),
+  outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
 };

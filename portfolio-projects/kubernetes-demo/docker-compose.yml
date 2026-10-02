@@ -5,29 +5,26 @@ services:
       default:
         aliases: [backend-service]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3201:3000"
     environment:
-      - NODE_ENV=development
-      - PORT=3000
-      - HOST=0.0.0.0
-      - APP_NAME=k8s-demo
-      - LOG_LEVEL=debug
-      - FEATURE_FLAGS={"newFeature":true,"betaFeature":false}
-      - API_KEY=dev-api-key
-      - DB_PASSWORD=dev-password
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-    command: npm run dev
+      NODE_ENV: development
+      PORT: "3000"
+      HOST: 0.0.0.0
+      APP_NAME: k8s-demo
+      LOG_LEVEL: info
+      FEATURE_FLAGS: '{"newFeature":true,"betaFeature":false}'
+      API_KEY: demo-api-key
+      DB_PASSWORD: demo-password
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: ./frontend
     ports:
-      - "80:80"
+      - "127.0.0.1:8082:80"
     depends_on:
-      - backend
-    environment:
-      - REACT_APP_API_URL=http://localhost:3000
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
+      backend:
+        condition: service_healthy

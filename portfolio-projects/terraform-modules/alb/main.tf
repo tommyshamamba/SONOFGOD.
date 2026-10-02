@@ -1,17 +1,35 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.7"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0, < 7.0"
+    }
+  }
 }
 
 resource "aws_lb" "this" {
   name               = var.name
   internal           = var.internal
   load_balancer_type = var.load_balancer_type
-  security_groups    = var.security_group_ids
+  security_groups    = concat(var.security_group_ids, aws_security_group.alb[*].id)
   subnets            = var.subnet_ids
 
   enable_deletion_protection       = var.enable_deletion_protection
   enable_http2                     = var.enable_http2
   enable_cross_zone_load_balancing = var.enable_cross_zone_load_balancing
+
+  lifecycle {
+    precondition {
+      condition     = var.create_security_group || length(var.security_group_ids) > 0
+      error_message = "Create a security group or supply at least one existing security_group_id."
+    }
+    precondition {
+      condition     = !var.enable_access_logs || var.access_logs_bucket != ""
+      error_message = "access_logs_bucket is required when access logging is enabled."
+    }
+  }
 
   dynamic "access_logs" {
     for_each = var.enable_access_logs ? [1] : []
@@ -73,6 +91,17 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
+  lifecycle {
+    precondition {
+      condition     = var.http_listener_action_type != "redirect" || (var.create_https_listener && var.acm_certificate_arn != "")
+      error_message = "HTTP redirects require an HTTPS listener and ACM certificate."
+    }
+    precondition {
+      condition     = var.http_listener_action_type != "forward" || var.create_target_group
+      error_message = "HTTP forwarding requires create_target_group = true."
+    }
+  }
+
   default_action {
     type = var.http_listener_action_type
 
@@ -97,13 +126,20 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_lb_listener" "https" {
-  count = var.create_https_listener && var.acm_certificate_arn != "" ? 1 : 0
+  count = var.create_https_listener ? 1 : 0
 
   load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = var.ssl_policy
   certificate_arn   = var.acm_certificate_arn
+
+  lifecycle {
+    precondition {
+      condition     = var.acm_certificate_arn != "" && var.create_target_group
+      error_message = "HTTPS requires an ACM certificate and create_target_group = true."
+    }
+  }
 
   default_action {
     type             = "forward"

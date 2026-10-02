@@ -100,11 +100,50 @@ async def ws_self_test(aw3, timeout_seconds: float = 5.0) -> str:
     return label
 
 
-async def _iter_ws_subscription(aw3, sub: _WSSubscription) -> AsyncIterator[Any]:
-    async for msg in _ws_stream(aw3):
-        sid, result = _ws_extract(msg)
-        if sid == sub.id:
-            yield result
+def _ws_extract(message):
+    """Normalize raw JSON-RPC and web3.py's decoded subscription messages."""
+    from collections.abc import Mapping
+    if isinstance(message, (bytes, bytearray, str)):
+        try:
+            message = json.loads(message)
+        except (ValueError, UnicodeDecodeError):
+            return None, None
+    if not isinstance(message, Mapping):
+        return None, None
+    payload = message.get("params", message)
+    if not isinstance(payload, Mapping):
+        return None, None
+    return payload.get("subscription"), payload.get("result")
+
+
+async def _iter_ws_subscription(aw3, sub: _WSSubscription, timeout: float = None) -> AsyncIterator[Any]:
+    """Read one subscription; the caller owns unsubscribe and reconnect behavior."""
+    if timeout is not None and timeout <= 0:
+        raise ValueError("Subscription timeout must be positive")
+    iterator = _ws_stream(aw3).__aiter__()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout if timeout is not None else None
+    try:
+        while True:
+            try:
+                if deadline is None:
+                    message = await iterator.__anext__()
+                else:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError("subscription idle timeout")
+                    message = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+            except StopAsyncIteration:
+                raise ConnectionError("WebSocket subscription stream ended") from None
+            sid, result = _ws_extract(message)
+            if sid == sub.id:
+                if timeout is not None:
+                    deadline = loop.time() + timeout
+                yield result
+    finally:
+        close = getattr(iterator, "aclose", None)
+        if close is not None:
+            await close()
 
 async def _ws_unsubscribe(aw3, sub) -> None:
     sid = getattr(sub, "id", sub)
@@ -116,12 +155,12 @@ async def _ws_unsubscribe(aw3, sub) -> None:
 
 # Arbitrum MEV Bot: Arbitrage + Liquidations + Backruns + Profit Recovery + Bridging
 # (Merged from THELORD.py and ALPHA.py)
-# - Advanced AI-driven arbitrage engine (Bandit + ML)
-# - Fully implemented Aave v3 Liquidation Hunter
-# - Complete Profit Recovery: Withdraw, classify (ERC20, ERC4626, aToken, LP), redeem, consolidate, and bridge
+# - Experimental arbitrage ranking (Bandit + ML)
+# - Experimental Aave v3 liquidation strategy
+# - Experimental profit recovery: Withdraw, classify (ERC20, ERC4626, aToken, LP), redeem, consolidate, and bridge
 # - Self-healing supervisor for all tasks (arbitrage, liquidations, etc.)
 # - Resilient WSS connection with auto-failover
-# - Superior color-coded logging for developer experience
+# - Color-coded logging; offline regression scope is documented in legacy-tests/README.md
 
 import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re, inspect
 
@@ -290,6 +329,7 @@ HTTP_URL = _first_env("ALCHEMY_HTTP", "INFURA_HTTP", "CHAINSTACK_HTTP", "LAVA_HT
 
 # ============================ Keys & contract ============================
 PRIVATE_KEY   = os.getenv("PRIVATE_KEY", "").strip()
+ALLOW_LIVE_TRANSACTIONS = _env_bool("ALLOW_LIVE_TRANSACTIONS", False)
 CHAIN_ID      = _env_int("CHAIN_ID", 42161)
 ARB_EXECUTOR_ADDRESS_ENV = os.getenv("ARB_EXECUTOR_ADDRESS", "0x0000000000000000000000000000000000000000")
 ARB_EXECUTOR_OWNER_ENV   = os.getenv("ARB_EXECUTOR_OWNER",   "0x0000000000000000000000000000000000000000")
@@ -1742,34 +1782,7 @@ def erc20_allowance(token: str, owner: str, spender: str) -> int:
         return 0
 
 # ============================ Nonce / TX opts ============================
-class NonceMgr:
-    def __init__(self, w3, addr):
-        self.w3 = w3
-        self.addr = addr
-        self.nonce: Optional[int] = None
-        self.lock = asyncio.Lock()
-    async def _chain_pending(self) -> int:
-        def _get():
-            try:
-                return self.w3.eth.get_transaction_count(self.addr, "pending")
-            except Exception:
-                return self.w3.eth.get_transaction_count(self.addr)
-        return await asyncio.to_thread(_get)
-    async def next(self) -> int:
-        async with self.lock:
-            if self.nonce is None:
-                self.nonce = await self._chain_pending()
-            else:
-                current_chain_nonce = await self._chain_pending()
-                if current_chain_nonce > self.nonce:
-                    logger.warning("Nonce manager detected external transaction; resetting nonce to %d", current_chain_nonce)
-                    self.nonce = current_chain_nonce
-                else:
-                    self.nonce += 1
-            return self.nonce
-    async def bump_on_failure(self):
-        async with self.lock:
-            self.nonce = None
+from legacy_nonce import NonceMgr
 
 NONCE = NonceMgr(w3, ACCOUNT_ADDRESS or "0x0000000000000000000000000000000000000000")
 
@@ -1782,7 +1795,7 @@ async def tx_opts_base_async(fast_gas: bool = False) -> Dict[str, Any]:
     chain_id = await get_cached_chain_id()
     d: Dict[str, Any] = {
         "from": ACCOUNT_ADDRESS,
-        "nonce": await NONCE.next(),
+        "nonce": await NONCE.preview(),  # Read-only; submission assigns under its lock.
         "gas": TX_GAS_LIMIT,
         "chainId": chain_id,
     }
@@ -1814,37 +1827,38 @@ def simulate_tx(tx: Dict[str, Any]) -> bool:
             return False
 
 async def send_tx_async(tx: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    if not ALLOW_LIVE_TRANSACTIONS:
+        logger.info("Transaction submission disabled; ALLOW_LIVE_TRANSACTIONS is false.")
+        return False, None
     if not ACCOUNT:
         logger.error("No PRIVATE_KEY configured — refusing to send transaction.")
         return False, None
-    try:
-        def _sign():
-            return w3.eth.account.sign_transaction(tx, PRIVATE_KEY)
-        signed = await asyncio.to_thread(_sign)
-        raw = signed.rawTransaction
+
+    async def prepare(nonce):
+        current = dict(tx, nonce=nonce)
+        signed = await asyncio.to_thread(w3.eth.account.sign_transaction, current, PRIVATE_KEY)
+        raw = getattr(signed, "raw_transaction", None)
+        if raw is None:  # web3.py / eth-account older versions
+            raw = signed.rawTransaction
+        return raw
+
+    async def broadcast(raw):
         if USE_FLASHBOTS:
             payload = {
                 "jsonrpc": "2.0", "id": 1, "method": "eth_sendPrivateTransaction",
-                "params": [{"tx": raw.hex(), "maxBlockNumber": hex(w3.eth.block_number + 5)}]
+                "params": [{"tx": "0x" + raw.hex().removeprefix("0x"), "maxBlockNumber": hex(await asyncio.to_thread(lambda: w3.eth.block_number) + 5)}]
             }
-            try:
-                r = await asyncio.to_thread(lambda: requests.post(FLASHBOTS_RPC, json=payload, timeout=8).json())
-            except Exception as e:
-                logger.warning("Flashbots RPC error: %s", e)
-                return False, None
+            r = await asyncio.to_thread(lambda: requests.post(FLASHBOTS_RPC, json=payload, timeout=8).json())
             if "error" in r or not r.get("result"):
-                logger.warning("Flashbots error: %s — aborting to avoid public exposure", r.get("error"))
-                return False, None
-            return True, r.get("result")
-        def _send():
-            return w3.eth.send_raw_transaction(raw).hex()
-        h = await asyncio.to_thread(_send)
-        return True, h
+                raise RuntimeError("Private relay did not accept transaction")
+            return r["result"]
+        return await asyncio.to_thread(lambda: w3.eth.send_raw_transaction(raw).hex())
+
+    try:
+        return True, await NONCE.submit(prepare, broadcast)
     except Exception as e:
-        logger.error("TX send error: %s", e)
-        if "nonce too low" in str(e).lower() or "replacement transaction underpriced" in str(e).lower():
-            await NONCE.bump_on_failure()
-            logger.info("Nonce-related error detected, manager state was reset.")
+        logger.error("TX submission stopped: %s", e)
+        # Do not reset/reuse an uncertain nonce: the first send may have landed.
         return False, None
 
 async def wait_receipt(txh: str, timeout: int = 180) -> Optional[dict]:
@@ -1920,6 +1934,27 @@ def encode_univ3_path(tokens: List[str], fees: List[int]) -> bytes:
         b += int(fees[i]).to_bytes(3, "big")
     b += bytes.fromhex(_cs(tokens[-1])[2:].rjust(40, "0"))
     return b
+
+def encode_flashloan_params(provider: str, token: str, amount: int, payload: bytes) -> bytes:
+    if provider in ("AAVE", "BALANCER"):
+        return payload
+    if provider != "DODO":
+        raise ValueError("No pool selector configured for this flash-loan provider")
+    token = _cs(token)
+    pool_abi = [{"type": "function", "name": name, "inputs": [],
+                 "outputs": [{"type": "address", "name": ""}], "stateMutability": "view"}
+                for name in ("_BASE_TOKEN_", "_QUOTE_TOKEN_")]
+    for pool in os.getenv("DODO_POOL", "").split(","):
+        if not pool.strip():
+            continue
+        pool = _cs(pool.strip())
+        c = w3.eth.contract(address=pool, abi=pool_abi)
+        base = _cs(c.functions._BASE_TOKEN_().call())
+        quote = _cs(c.functions._QUOTE_TOKEN_().call())
+        if token in (base, quote) and erc20_balance(token, pool) >= amount:
+            return abi_encode(["address", "address", "bytes"], [pool, base, payload])
+    raise ValueError("No configured DODO pool can lend the requested asset and amount")
+
 
 def _arb_struct_v14(path: List[str], min_output: int, dex_name: str, fees: List[int], deadline: int) -> dict:
     fee_tier = int(fees[0]) if fees else 3000
@@ -2534,7 +2569,7 @@ async def withdraw_profits():
                 logger.info("[WITHDRAW] simulate failed token=%s bal=%s", token_cs, exec_bal)
             continue
         ok, txh = await send_tx_async(tx)
-        await log_recovery_op("exec.withdrawProfit", token_cs, token_cs, exec_bal, 0, txh, "submitted")
+        await log_recovery_op("exec.withdrawProfit", token_cs, token_cs, exec_bal, 0, txh, "submitted" if ok else "failed")
         if ok:
             await monitor_tx(txh, "withdraw", {"token": token_cs, "amount": int(exec_bal), "gross_usd": float(usd_notional(token_cs, exec_bal)), "net_usd": 0})
 
@@ -2678,7 +2713,7 @@ async def choose_best_provider_and_size(
         try:
             tx_temp = exec_c.functions.requestFlashLoan(
                 int(FlashloanProvider.get(p, 0)),
-                Web3.to_checksum_address(cycle[0]), int(size), payload_temp, int(deadline_temp)
+                Web3.to_checksum_address(cycle[0]), int(size), encode_flashloan_params(p, cycle[0], size, payload_temp), int(deadline_temp)
             ).build_transaction(await tx_opts_base_async(fast_gas=fast_gas))
             
             gas_cost_usd = _usd_cost_for_tx(tx_temp)
@@ -2771,7 +2806,7 @@ async def arbitrage_strategy(trigger: str = "poll") -> bool:
                 int(FlashloanProvider.get(provider, 0)),
                 Web3.to_checksum_address(refined[0]),
                 int(size),
-                payload,
+                encode_flashloan_params(provider, refined[0], size, payload),
                 int(deadline)
             ).build_transaction(await tx_opts_base_async(fast_gas=fast_gas))
             
@@ -3408,12 +3443,6 @@ def _extract_tx_hash_from_event(ev) -> str | None:
             if isinstance(v, str):
                 return v
     return None
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt caught, shutting down.")
-
 # ============================ Self-test simulation ============================
 async def selftest_simulation(blocks: int = 3, pendings: int = 5):
     """Injects fake newHeads and pending tx events into the existing handlers for a quick E2E smoke test.
@@ -3441,76 +3470,8 @@ async def selftest_simulation(blocks: int = 3, pendings: int = 5):
         pass
 
 
-
-async def _iter_ws_subscription(aw3, sub, timeout: float = None):
-    """Async iterator over websocket messages for a given subscription id,
-    with robust backoff/re-subscribe and simple metrics.
-    - aw3: AsyncWeb3 provider
-    - sub: _WSSubscription (fields: sub_id, method)
-    - timeout: optional idle timeout in seconds (forces resubscribe if no events)
-    """
-    import asyncio, time, random
-    global METRICS
-    backoff = 0.5
-    max_backoff = 10.0
-    while True:
-        try:
-            stream = _ws_stream(aw3)
-            METRICS["ws.restarts"] += 1
-            last = time.monotonic()
-            deadline = (last + timeout) if timeout else None
-
-            async for msg in stream:
-                # Normalize payload
-                try:
-                    if isinstance(msg, (bytes, bytearray)):
-                        import json as _json
-                        event = _json.loads(msg.decode("utf-8", errors="ignore"))
-                    else:
-                        event = msg
-                except Exception:
-                    continue
-
-                METRICS["ws.events"] += 1
-
-                if not isinstance(event, dict):
-                    continue
-
-                method = event.get("method")
-                if method == "eth_subscription":
-                    params = event.get("params") or {}
-                    sid = params.get("subscription")
-                    if sid and sid == sub.sub_id:
-                        # Increment per-subscription counters
-                        if getattr(sub, "method", "") == "newPendingTransactions":
-                            METRICS["ws.pending_events"] += 1
-                        elif getattr(sub, "method", "") == "newHeads":
-                            METRICS["ws.newhead_events"] += 1
-                        yield params.get("result")
-                # Idle timeout handling
-                if deadline is not None and time.monotonic() > deadline:
-                    raise asyncio.TimeoutError("subscription idle timeout")
-            # If the stream exits the loop (shouldn't), force retry
-            raise RuntimeError("websocket stream ended unexpectedly")
-        except Exception as e:
-            METRICS["ws.errors"] += 1
-            # calculate jittered backoff
-            sleep = min(max_backoff, backoff) * (1.0 + 0.2 * (random.random() - 0.5))
-            METRICS["ws.backoff.ms"] = int(sleep * 1000)
-            logger.warning(f"WSS subscription error: {e}. Retrying in {sleep:.2f}s | sub_method={getattr(sub, 'method', '?')} sid={getattr(sub, 'sub_id', '?')}")
-            await asyncio.sleep(sleep)
-            backoff = min(max_backoff, backoff * 2.0)
-            # attempt resubscribe
-            try:
-                try:
-                    await _ws_unsubscribe(aw3, sub)
-                except Exception:
-                    pass
-                new_sub = await _ws_subscribe(aw3, sub.method)
-                sub.sub_id = new_sub.sub_id
-                METRICS["ws.resubscribes"] += 1
-                backoff = 0.5  # reset backoff on success
-            except Exception as e2:
-                logger.error(f"Failed to resubscribe {getattr(sub, 'method', '?')}: {e2}")
-                # keep the backoff growing and try again
-                continue
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt caught, shutting down.")

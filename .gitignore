@@ -1,13 +1,17 @@
 node_modules/
+.venv/
 .pytest_cache/
 pytest-cache-files-*/
 __pycache__/
 *.pyc
 *.onnx
 .test-data/
+.demo-data/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.tfvars.json
 playwright-report/
 .env
 .env.local

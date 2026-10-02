@@ -38,7 +38,8 @@ kubernetes-demo/
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker with a running Linux engine and Docker Compose
+- Node.js 24.19 or later in the 24.x line for local source commands
 - Kubernetes cluster (Minikube, Kind, or cloud provider)
 - kubectl CLI tool
 
@@ -46,17 +47,19 @@ kubernetes-demo/
 
 1. **Start the application:**
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 2. **Access the application:**
-- Frontend: http://localhost
-- Backend API: http://localhost:3000
+- Frontend: http://localhost:8082
+- Backend API: http://localhost:3201
 
 3. **Stop the application:**
 ```bash
-docker-compose down
+docker compose down
 ```
+
+The Compose image runs the installed production server directly; no source mounts or development watcher are required. Backend readiness gates frontend startup. Container execution still requires a running Docker engine; a live Kubernetes rollout has not been verified here.
 
 ## Kubernetes Deployment
 
@@ -66,15 +69,17 @@ Build images for your local cluster or push to a registry:
 
 ```bash
 # Build backend image
-docker build -t k8s-demo-backend:latest ./backend
+docker build -t k8s-demo-backend:local ./backend
 
 # Build frontend image
-docker build -t k8s-demo-frontend:latest ./frontend
+docker build -t k8s-demo-frontend:local ./frontend
 
 # If using Minikube, load images into the cluster
-minikube image load k8s-demo-backend:latest
-minikube image load k8s-demo-frontend:latest
+minikube image load k8s-demo-backend:local
+minikube image load k8s-demo-frontend:local
 ```
+
+The local manifests use `imagePullPolicy: IfNotPresent` so loaded images are used. For a registry deployment, replace tags with your own published image versions or digests.
 
 ### Step 2: Create Kubernetes Resources
 
@@ -101,6 +106,8 @@ kubectl apply -f k8s/
 Check pod status:
 ```bash
 kubectl get pods
+kubectl rollout status deployment/backend-deployment --timeout=180s
+kubectl rollout status deployment/frontend-deployment --timeout=180s
 ```
 
 Check services:
@@ -156,7 +163,7 @@ kubectl get service frontend-service
 ### Health Checks
 - **Liveness Probe**: Checks if container is running
 - **Readiness Probe**: Checks if container is ready to serve traffic
-- Both use `/health` endpoint for backend and `/` for frontend
+- Backend liveness uses `/health`; readiness uses `/ready`. Frontend probes use `/`.
 
 ### Resource Limits
 - CPU and memory requests/limits defined for each container
