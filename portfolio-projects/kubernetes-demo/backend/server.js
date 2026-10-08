@@ -21,7 +21,7 @@ function createApp(env = process.env) {
   const build = path.join(__dirname, '../frontend/build');
   if (fs.existsSync(path.join(build, 'index.html'))) {
     app.use(express.static(build));
-    app.get('*', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(build, 'index.html')));
+    app.get('/{*splat}', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(build, 'index.html')));
   }
   app.use((req, res) => res.status(404).json({ error: 'Not found' }));
   return app;
