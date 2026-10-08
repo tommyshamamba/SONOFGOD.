@@ -238,10 +238,10 @@ function createApp(options = {}) {
     const gas = await rpc('estimateGas', { to: address(to), ...(from ? { from: address(from) } : {}), value: ethers.parseEther(value || '0'), data });
     return { gasEstimate: gas.toString() };
   });
-  const build = path.join(__dirname, '../frontend/build');
+  const build = options.frontendBuild || path.join(__dirname, '../frontend/build');
   if (fs.existsSync(path.join(build, 'index.html'))) {
     app.use(express.static(build));
-    app.get('*', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(build, 'index.html')));
+    app.get('/{*path}', (req, res, next) => req.path.startsWith('/api/') ? next() : res.sendFile(path.join(build, 'index.html')));
   }
   app.use((req, res) => res.status(404).json({ error: 'Endpoint not found' }));
   app.use((error, req, res, next) => {

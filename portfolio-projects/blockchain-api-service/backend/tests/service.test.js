@@ -2,6 +2,7 @@ const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { tmpdir } = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { once } = require('node:events');
 const { createApp, readConfig } = require('../server');
@@ -24,6 +25,7 @@ async function start(filename, overrides = {}) {
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
+    base,
     async request(url, method = 'GET', body, token, apiKey) {
       const response = await fetch(`${base}${url}`, { method, headers: {
         'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(apiKey ? { 'X-API-Key': apiKey } : {}),
@@ -43,6 +45,45 @@ async function key(client, token) {
   assert.equal(response.status, 201);
   return response.body;
 }
+
+test('built dashboard serves root, deep links and assets while preserving API responses', async t => {
+  const filename = temporary(t);
+  const frontendBuild = fs.mkdtempSync(path.join(tmpdir(), 'blockchain-frontend-'));
+  testFolders.push(frontendBuild);
+  const html = '<!doctype html><html><body>Dashboard fixture</body></html>';
+  const script = 'window.dashboardLoaded = true;';
+  fs.writeFileSync(path.join(frontendBuild, 'index.html'), html);
+  fs.writeFileSync(path.join(frontendBuild, 'app.js'), script);
+  const client = await start(filename, { frontendBuild });
+  t.after(() => client.close());
+
+  for (const route of ['/', '/dashboard/keys', '/dashboard/keys?tab=active']) {
+    const response = await fetch(client.base + route);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/html/);
+    assert.equal(await response.text(), html);
+  }
+  const asset = await fetch(client.base + '/app.js');
+  assert.equal(asset.status, 200);
+  assert.equal(await asset.text(), script);
+  assert.equal((await client.request('/health')).body.status, 'alive');
+  assert.equal((await client.request('/api/v1/chains')).body.mode, 'demo');
+  assert.equal((await client.request('/api/keys')).status, 401);
+  for (const [route, method] of [['/api/missing', 'GET'], ['/api/missing', 'POST'], ['/dashboard/keys', 'POST']]) {
+    const response = await client.request(route, method);
+    assert.equal(response.status, 404);
+    assert.deepEqual(response.body, { error: 'Endpoint not found' });
+  }
+});
+
+test('API remains available without a built dashboard', async t => {
+  const filename = temporary(t);
+  const client = await start(filename, { frontendBuild: path.join(path.dirname(filename), 'missing') });
+  t.after(() => client.close());
+  assert.equal((await client.request('/health')).status, 200);
+  assert.equal((await client.request('/')).status, 404);
+  assert.equal((await client.request('/dashboard/keys')).status, 404);
+});
 
 test('accounts, hashed keys, usage and revocations persist across application restart', async t => {
   const filename = temporary(t);
