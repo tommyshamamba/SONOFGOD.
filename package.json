@@ -1,5 +1,5 @@
 {
-  "name": "sonofgod-local-demo-checks",
+  "name": "portfolio-local-demo-checks",
   "private": true,
   "engines": { "node": ">=24 <25" },
   "scripts": {
