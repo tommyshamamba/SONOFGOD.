@@ -242,7 +242,7 @@ jobs:
           - portfolio-projects/kubernetes-demo/backend
           - portfolio-projects/kubernetes-demo/frontend
           - portfolio-projects/pesa-fams-banking-prototype
-          - legacy-tests
+          - onchain-execution-engine/tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -261,7 +261,7 @@ jobs:
       - run: python -m pip install pip-audit==2.10.1
       - run: python -m pip_audit --require-hashes --no-deps -r trace-stores/services/trace-api/requirements-test.txt
 
-  legacy-local-tests:
+  execution-engine-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -272,10 +272,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m unittest discover -s legacy-tests -p 'test_*.py' -v
+      - run: python -m unittest discover -s onchain-execution-engine/tests -p 'test_*.py' -v
       - run: npm ci --ignore-scripts
-        working-directory: legacy-tests
+        working-directory: onchain-execution-engine/tests
       - run: npm test
-        working-directory: legacy-tests
+        working-directory: onchain-execution-engine/tests
       - run: npm run compile
-        working-directory: legacy-tests
+        working-directory: onchain-execution-engine/tests
