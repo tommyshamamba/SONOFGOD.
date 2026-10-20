@@ -2,7 +2,7 @@
 
 [Portfolio](../README.md) · [Run locally](LOCAL_DEMOS.md) · [Verification evidence](VERIFICATION.md)
 
-These screenshots were captured by the six passing browser journeys in [run 36959210255](https://github.com/tommyshamamba/SONOFGOD./actions/runs/36959210255/job/110688907645), source commit `55fd95d`. They show running applications with synthetic data. The container startup race reported by a separate job in that run was subsequently fixed with HTTP health checks; consult the current verification record for the complete workflow result.
+These screenshots were captured by the six passing browser journeys in [run 36959210255](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/runs/36959210255/job/110688907645), source commit `55fd95d`. They show running applications with synthetic data. The container startup race reported by a separate job in that run was subsequently fixed with HTTP health checks; consult the current verification record for the complete workflow result.
 
 ## Trace & Store
 

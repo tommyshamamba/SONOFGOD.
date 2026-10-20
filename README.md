@@ -1,10 +1,10 @@
 # Tommy Shamamba · Software engineering portfolio
 
-[![Project checks](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml/badge.svg?branch=main)](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml)
+[![Project checks](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml/badge.svg?branch=main)](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml)
 
 Applications, APIs and infrastructure projects covering image processing, interview preparation, database workflows and cloud tooling.
 
-**Start with the featured projects below.** Each links to its source, setup instructions and implementation details. This repository, `SONOFGOD.`, keeps the projects together in one collection.
+**Start with the featured projects below.** Each links to its source, setup instructions and implementation details. This repository, `platform-engineering-portfolio`, keeps the projects together in one collection.
 
 [Project catalog](docs/PROJECT_CATALOG.md) · [Run the demos](docs/LOCAL_DEMOS.md) · [Verification results](docs/VERIFICATION.md) · [Documentation](docs/README.md)
 
@@ -63,7 +63,7 @@ See the [proposal index](docs/plans/README.md) for scope and implementation prio
 ## Repository map
 
 ```text
-SONOFGOD./
+platform-engineering-portfolio/
 ├── trace-stores/          # Image-processing API and storefront
 ├── portfolio-projects/   # Six application/infrastructure projects
 ├── docs/                 # Catalog, demo guides and verification reports
@@ -78,7 +78,7 @@ SONOFGOD./
 
 ## Engineering notes
 
-- **Verification:** [Current results](docs/VERIFICATION.md), [source review](docs/REVIEW_REPORT.md) and [GitHub Actions](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml).
+- **Verification:** [Current results](docs/VERIFICATION.md), [source review](docs/REVIEW_REPORT.md) and [GitHub Actions](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml).
 - **Next work:** [Prioritized implementation roadmap](docs/PR_ROADMAP.md) and [deployment-readiness checklist](docs/PRODUCTION_READINESS.md).
 - **Contributions:** [Development workflow](CONTRIBUTING.md). Keep credentials, uploaded documents and runtime records out of Git.
 
