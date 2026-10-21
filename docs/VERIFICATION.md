@@ -4,7 +4,7 @@ This report records observed checks for the portfolio. It distinguishes reproduc
 
 ## Verified result — 2 October 2026 UTC
 
-**All 30 hosted jobs passed** in [run 36959456953](https://github.com/tommyshamamba/SONOFGOD./actions/runs/36959456953), testing source commit [`cb07140ce49aba790a70ca0be5314709be6a7706`](https://github.com/tommyshamamba/SONOFGOD./commit/cb07140ce49aba790a70ca0be5314709be6a7706). The [workflow page](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml) shows subsequent runs. Documentation and screenshots may be published after this tested source commit.
+**All 30 hosted jobs passed** in [run 36959456953](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/runs/36959456953), testing source commit [`cb07140ce49aba790a70ca0be5314709be6a7706`](https://github.com/tommyshamamba/platform-engineering-portfolio/commit/cb07140ce49aba790a70ca0be5314709be6a7706). The [workflow page](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml) shows subsequent runs. Documentation and screenshots may be published after this tested source commit.
 
 All six browser journeys passed with no uncaught browser exceptions. See [the application walkthrough](DEMO_GALLERY.md) for screenshots and engineering decisions.
 

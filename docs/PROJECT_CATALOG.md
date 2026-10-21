@@ -4,7 +4,7 @@
 
 ## Implemented projects
 
-Each entry is a folder in `SONOFGOD.`. Source and setup links below point to the maintained collection rather than similarly named standalone repositories.
+Each entry is a folder in `platform-engineering-portfolio`. Source and setup links below point to the maintained collection rather than similarly named standalone repositories.
 
 | Project | Source and setup | Demonstrable behavior | Boundary |
 | --- | --- | --- | --- |
@@ -38,7 +38,7 @@ The [proposal index](plans/README.md) defines milestones and the evidence needed
 
 ## Verification and next work
 
-Use the [current verification record](VERIFICATION.md) for commands, results and exact-commit evidence. [GitHub Actions](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml) shows the status of each hosted run. The [September local report](LOCAL_DEMO_VERIFICATION.md) and [earlier source review](REVIEW_REPORT.md) are retained as historical evidence.
+Use the [current verification record](VERIFICATION.md) for commands, results and exact-commit evidence. [GitHub Actions](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml) shows the status of each hosted run. The [September local report](LOCAL_DEMO_VERIFICATION.md) and [earlier source review](REVIEW_REPORT.md) are retained as historical evidence.
 
 Implementation priorities remain in the [PR roadmap](PR_ROADMAP.md). Deployment, broader integration coverage and reproducible performance measurements remain separate milestones.
 
