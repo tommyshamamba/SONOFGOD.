@@ -2,7 +2,7 @@
 
 These documents turn three project ideas into scoped implementation plans. Each proposal describes intended behavior, design choices, and evidence needed before making performance or production claims.
 
-**Status: design proposals; not implemented. No validated benchmarks are available for these proposals.** They are documentation within SONOFGOD, not separate deployed applications or GitHub repositories.
+**Status: design proposals; not implemented. No validated benchmarks are available for these proposals.** They are documentation within this portfolio repository, not separate deployed applications or GitHub repositories.
 
 | Proposal | First useful release | Next evidence to produce |
 |---|---|---|
