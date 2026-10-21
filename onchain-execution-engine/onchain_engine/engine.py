@@ -1,3 +1,5 @@
+"""Research prototype runtime. See README.md: never deployed, live sending off by default."""
+
 # On-chain execution engine (research prototype, Arbitrum)
 # Event-driven service that streams blocks over WebSocket, builds a token-price graph from
 # DEX quoters/subgraphs, detects candidate cycles (Johnson / Bellman-Ford), simulates them,
@@ -52,6 +54,26 @@ def _install_logging():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 _install_logging()
+
+# --- WS metrics defaults (inserted by patch) ---
+try:
+    METRICS  # type: ignore[name-defined]
+except NameError:
+    from collections import defaultdict
+    METRICS = defaultdict(int)  # basic fallback
+
+METRICS_DEFAULTS_WS = {
+    "ws.events": 0,
+    "ws.pending_events": 0,
+    "ws.newhead_events": 0,
+    "ws.errors": 0,
+    "ws.restarts": 0,
+    "ws.resubscribes": 0,
+    "ws.backoff.ms": 0,
+}
+for k, v in METRICS_DEFAULTS_WS.items():
+    METRICS.setdefault(k, v)
+
 logger = logging.getLogger("arb-bot")
 
 
@@ -96,8 +118,15 @@ from eth_account import Account
 from eth_utils import function_signature_to_4byte_selector
 from eth_abi import encode as abi_encode
 
+from .ws_compat import (_WSSubscription, _ws_subscribe, _ws_stream, _detect_ws_stream_label, ws_self_test,
+                        _ws_extract, _iter_ws_subscription, _ws_unsubscribe)
+from .gas import GasCostUnavailable, gas_cost_usd as _gas_cost_usd
+
 # ============================ Global init ============================
 load_dotenv(override=True)
+# Configuration is read after .env is loaded.
+from .config import *  # noqa: E402,F401,F403  (flat config namespace kept from the original script)
+from .config import _first_env, _env_bool, _env_int, _env_float, _env_addr, _is_zero_address  # noqa: E402
 getcontext().prec = 40
 
 random.seed(os.urandom(8))
@@ -105,158 +134,6 @@ STOP_EVENT = asyncio.Event()
 BLOCK_UPDATE_EVENT = asyncio.Event()
 WSS_READY_EVENT = asyncio.Event()  # set when WS healthy, cleared on drop
 
-# ============================ ENV helpers ============================
-def _first_env(*names: str) -> str:
-    for n in names:
-        v = os.getenv(n, "").strip()
-        if v:
-            return v
-    return ""
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    v = os.getenv(name, "")
-    if v == "":
-        return default
-    return v.lower() in {"1", "true", "yes", "y", "on"}
-
-def _env_int(name: str, default: int = 0) -> int:
-    v = os.getenv(name, "")
-    try:
-        return int(v) if v != "" else default
-    except Exception:
-        return default
-
-def _env_float(name: str, default: float = 0.0) -> float:
-    v = os.getenv(name, "")
-    try:
-        return float(v) if v != "" else default
-    except Exception:
-        return default
-
-def _env_addr(*keys: str, default: str = "") -> str:
-    for k in keys:
-        v = os.getenv(k, "").strip()
-        if v:
-            return v
-    return default
-
-# ============================ RPCs ============================
-ALCHEMY_HTTP    = os.getenv("ALCHEMY_HTTP", "").strip()
-ALCHEMY_WSS     = os.getenv("ALCHEMY_WSS", "").strip()
-INFURA_HTTP     = os.getenv("INFURA_HTTP", "").strip()
-INFURA_WSS      = os.getenv("INFURA_WSS", "").strip()
-CHAINSTACK_HTTP = os.getenv("CHAINSTACK_HTTP", "").strip()
-CHAINSTACK_WSS  = os.getenv("CHAINSTACK_WSS", "").strip()
-LAVA_HTTP       = os.getenv("LAVA_HTTP", "").strip()
-LAVA_WSS        = os.getenv("LAVA_WSS", "").strip()
-WSS_URL_OVERRIDE = os.getenv("WSS_URL_OVERRIDE", "").strip()
-WSS_SUBSCRIBE_ORDER = [s.strip() for s in os.getenv("WSS_SUBSCRIBE_ORDER", "pending,newHeads").split(",") if s.strip()]
-WSS_ACCEPT_ON_PROBE = _env_bool("WSS_ACCEPT_ON_PROBE", True)
-HTTP_URL = _first_env("ALCHEMY_HTTP", "INFURA_HTTP", "CHAINSTACK_HTTP", "LAVA_HTTP")
-
-# ============================ Keys & contract ============================
-PRIVATE_KEY   = os.getenv("PRIVATE_KEY", "").strip()
-ALLOW_LIVE_TRANSACTIONS = _env_bool("ALLOW_LIVE_TRANSACTIONS", False)
-CHAIN_ID      = _env_int("CHAIN_ID", 42161)
-ARB_EXECUTOR_ADDRESS_ENV = os.getenv("ARB_EXECUTOR_ADDRESS", "0x0000000000000000000000000000000000000000")
-ARB_EXECUTOR_OWNER_ENV   = os.getenv("ARB_EXECUTOR_OWNER",   "0x0000000000000000000000000000000000000000")
-EXECUTOR_EVENTS_ABI_PATH = os.getenv("EXECUTOR_EVENTS_ABI_PATH", "abi/executor_events.json")
-SKIP_OWNER_CHECK = _env_bool("SKIP_OWNER_CHECK", False)
-
-# Phase-2 toggles
-USE_JOHNSON_CYCLES = _env_bool("USE_JOHNSON_CYCLES", True)
-BANDIT_DECAY_GAMMA = float(os.getenv("BANDIT_DECAY_GAMMA", "0.995"))
-BANDIT_DECAY_INTERVAL_SEC = _env_int("BANDIT_DECAY_INTERVAL_SEC", 3600)
-
-def _is_zero_address(addr: str) -> bool:
-    s = (addr or "").lower()
-    if not s.startswith("0x"):
-        s = "0x" + s
-    return s == "0x" + "0"*40
-
-try:
-    ARB_EXECUTOR_ADDRESS = Web3.to_checksum_address(ARB_EXECUTOR_ADDRESS_ENV)
-except Exception:
-    ARB_EXECUTOR_ADDRESS = "0x0000000000000000000000000000000000000000"
-try:
-    ARB_EXECUTOR_OWNER = Web3.to_checksum_address(ARB_EXECUTOR_OWNER_ENV)
-except Exception:
-    ARB_EXECUTOR_OWNER = "0x0000000000000000000000000000000000000000"
-
-# ============================ Telegram / health ============================
-TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-TELEGRAM_HEARTBEAT_MIN = _env_int("TELEGRAM_HEARTBEAT_MIN", 0)
-HEALTH_HOST = os.getenv("HEALTH_HOST", "0.0.0.0")
-HEALTH_PORT = _env_int("HEALTH_PORT", 8788)
-
-# ============================ Gas / execution ============================
-DYNAMIC_GAS   = _env_bool("DYNAMIC_GAS", True)
-GAS_URGENCY   = os.getenv("GAS_URGENCY", "balanced")
-MAX_FEE_PER_GAS_GWEI  = _env_float("MAX_FEE_PER_GAS_GWEI", 0.0)
-MAX_PRIORITY_FEE_GWEI = _env_float("MAX_PRIORITY_FEE_GWEI", 0.25)
-TX_GAS_LIMIT          = _env_int("TX_GAS_LIMIT", 2_400_000)
-USE_FLASHBOTS = _env_bool("USE_FLASHBOTS", False) and CHAIN_ID == 1
-FLASHBOTS_RPC = os.getenv("FLASHBOTS_RELAY", os.getenv("FLASHBOTS_RPC", "https://rpc.flashbots.net")).strip()
-
-# ============================ Strategy / limits ============================
-MIN_PROFIT_USD    = Decimal(os.getenv("MIN_PROFIT_USD", "25"))
-ORACLE_DIVERGENCE = Decimal(os.getenv("ORACLE_DIVERGENCE", "0.02"))
-ANOMALY_THRESHOLD = Decimal(os.getenv("ANOMALY_THRESHOLD", "0.30"))
-MAX_HOPS          = _env_int("MAX_HOPS", 4)
-SLIPPAGE          = Decimal(os.getenv("SLIPPAGE", "0.003"))
-SCAN_INTERVAL     = _env_int("SCAN_INTERVAL", 5)
-USE_UNIV3_ONLY    = _env_bool("USE_UNIV3_ONLY", True)
-MAX_TOKENS        = _env_int("MAX_TOKENS", 60)
-BAL_PER_HOP       = _env_int("BAL_PER_HOP", 10)
-HYBRID_AI_DISCOVERY = _env_bool("HYBRID_AI_DISCOVERY", True)
-ML_BACKEND        = os.getenv("ML_BACKEND", "auto").strip().lower()
-
-SLIPPAGE_MAX               = Decimal(os.getenv("SLIPPAGE_MAX", "0.010"))
-SLIPPAGE_HOP_BUMP          = Decimal(os.getenv("SLIPPAGE_HOP_BUMP", "0.0005"))
-SLIPPAGE_SIZE_STEP_USD     = Decimal(os.getenv("SLIPPAGE_SIZE_STEP_USD", "100000"))
-SLIPPAGE_SIZE_STEP_BUMP    = Decimal(os.getenv("SLIPPAGE_SIZE_STEP_BUMP", "0.0005"))
-SLIPPAGE_SIZE_MAX_STEPS    = _env_int("SLIPPAGE_SIZE_MAX_STEPS", 10)
-
-# Flashloan provider caps
-CAP_AAVE_PCT      = Decimal(os.getenv("CAP_AAVE_PCT", "0.80"))
-CAP_BALANCER_PCT  = Decimal(os.getenv("CAP_BALANCER_PCT", "0.80"))
-CAP_DODO_PCT      = Decimal(os.getenv("CAP_DODO_PCT", "0.80"))
-
-# Liquids/Backruns
-ENABLE_LIQUIDATIONS = _env_bool("ENABLE_LIQUIDATIONS", True)
-LIQ_POOL_ADDR = Web3.to_checksum_address(os.getenv("LIQ_POOL", "0x794a61358D6845594F94dc1DB02A252b5b4814aD")) # AAVE V3 Arbitrum
-LIQ_CLOSE_FACTOR_PCT = Decimal(os.getenv("LIQ_CLOSE_FACTOR_PCT", "0.5")) # Liquidate up to 50% of debt
-LIQ_MIN_PROFIT_USD = Decimal(os.getenv("LIQ_MIN_PROFIT_USD", "25"))
-
-ENABLE_BACKRUNS = _env_bool("ENABLE_BACKRUNS", True)
-BACKRUN_TARGETS = [a.strip() for a in os.getenv("BACKRUN_TARGETS", "").split(",") if a.strip()]
-WITHDRAW_INTERVAL_SEC = _env_int("WITHDRAW_INTERVAL_SEC", 3600)
-
-# Profit recovery / consolidation
-AUTO_CONSOLIDATE_PROFITS = _env_bool("AUTO_CONSOLIDATE_PROFITS", True)
-CONSOLIDATE_PREFERRED_BASE = os.getenv("CONSOLIDATE_PREFERRED_BASE", "").strip().upper() or os.getenv("TARGET_TOKEN", "USDC").strip().upper()
-CONSOLIDATE_MIN_USD = Decimal(os.getenv("CONSOLIDATE_MIN_USD", "5"))
-CONSOLIDATE_SLIPPAGE = Decimal(os.getenv("CONSOLIDATE_SLIPPAGE", "0.005"))
-PROFIT_RECOVERY_INTERVAL_SEC = _env_int("PROFIT_RECOVERY_INTERVAL_SEC", 900)
-TOKEN_DISCOVERY_INTERVAL = _env_int("TOKEN_DISCOVERY_INTERVAL", 600)
-CONSOLIDATE_UNWRAP_WETH = _env_bool("CONSOLIDATE_UNWRAP_WETH", False)
-
-# Bridging (Across)
-BRIDGE_ENABLED = _env_bool("BRIDGE_ENABLED", False)
-BRIDGE_PROTOCOL = os.getenv("BRIDGE_PROTOCOL", "AUTO").strip().upper()
-BRIDGE_TARGET_CHAIN_ID = _env_int("BRIDGE_TARGET_CHAIN_ID", CHAIN_ID)
-BRIDGE_MIN_USD = Decimal(os.getenv("BRIDGE_MIN_USD", "50"))
-BRIDGE_MAX_PCT_BALANCE = float(os.getenv("BRIDGE_MAX_PCT_BALANCE", "0.95"))
-BRIDGE_PREFERRED_TOKEN = os.getenv("BRIDGE_PREFERRED_TOKEN", "USDC").strip().upper()
-ACROSS_SPOKEPOOL_ADDRESS_ENV = os.getenv("ACROSS_SPOKEPOOL_ADDRESS", "").strip()
-ACROSS_SPOKEPOOL_ABI_PATH = os.getenv("ACROSS_SPOKEPOOL_ABI_PATH", "abi/across_spokepool.json").strip()
-ACROSS_RELAYER_FEE_BPS = _env_int("ACROSS_RELAYER_FEE_BPS", 30)
-ACROSS_QUOTE_VALID_SECS = _env_int("ACROSS_QUOTE_VALID_SECS", 900)
-
-# Recovery log scan tuning
-RECOVERY_TRANSFER_LOOKBACK_BLOCKS = _env_int("RECOVERY_TRANSFER_LOOKBACK_BLOCKS", 200_000)
-RECOVERY_LOG_CHUNK = _env_int("RECOVERY_LOG_CHUNK", 25_000)
 
 # ============================ Accounts & Web3 ============================
 ACCOUNT: Optional[Account] = None
@@ -316,7 +193,7 @@ async def close_http_session():
 # ============================ Async WSS ============================
 WSS_ACTIVE_URL: Optional[str] = None
 aw3: Optional["AsyncWeb3"] = None
-WSS_SUBPROTOCOL = os.getenv("WS_JSONRPC_SUBPROTOCOL", "").strip() or ""
+WSS_SUBPROTOCOL = os.getenv("WS_JSONRPC_SUBPROTOCOL", "").strip() or os.getenv("WSS_SUBPROTOCOL", "").strip() or ""
 WS_ORIGIN = os.getenv("WS_ORIGIN", "").strip() or None
 
 def _wss_kwargs() -> Dict[str, Any]:
@@ -331,23 +208,39 @@ def _wss_kwargs() -> Dict[str, Any]:
         headers["Origin"] = WS_ORIGIN
     if headers:
         kw["extra_headers"] = headers
-    open_timeout = _env_float("WSS_OPEN_TIMEOUT", 10.0)
+    open_timeout = _env_float("WSS_OPEN_TIMEOUT", 12.0)
     if open_timeout > 0:
         kw["open_timeout"] = open_timeout
-    close_timeout = _env_float("WSS_CLOSE_TIMEOUT", 5.0)
+    close_timeout = _env_float("WSS_CLOSE_TIMEOUT", 10.0)
     if close_timeout > 0:
         kw["close_timeout"] = close_timeout
-    ping_interval = _env_float("WS_PING_INTERVAL", 20.0)
+    ping_interval = _env_float("WS_PING_INTERVAL", _env_float("WSS_PING_INTERVAL", 20.0))
     if ping_interval >= 0:
         kw["ping_interval"] = ping_interval or None
-    ping_timeout = _env_float("WS_PING_TIMEOUT", 10.0)
+    ping_timeout = _env_float("WS_PING_TIMEOUT", 20.0)
     if ping_timeout >= 0:
         kw["ping_timeout"] = ping_timeout or None
-    max_size = _env_int("WS_MAX_SIZE", 10_485_760) # 10MB default
+    max_size = _env_int("WS_MAX_SIZE", 10_485_760)  # 10MB default
     if max_size > 0:
         kw["max_size"] = max_size
+    max_queue = _env_int("WS_MAX_QUEUE", 0)
+    if max_queue > 0:
+        kw["max_queue"] = max_queue
+    # NOTE: 'tcp_keepalive' is not supported by websockets; omit to avoid BaseEventLoop.create_connection() errors
     return kw
 
+def _clean_ws_url(u: str) -> str:
+    """Normalize common mistakes:
+    - strip surrounding quotes/brackets
+    - remove stray angle brackets users sometimes paste around tokens
+    - trim whitespace
+    """
+    if u is None:
+        return ""
+    u = u.strip().strip('"').strip("'")
+    # Users sometimes paste <token> or wrap the whole URL with < >
+    u = u.replace("<", "").replace(">", "")
+    return u
 def _mask_url(u: str) -> str:
     if not u: return "N/A"
     try:
@@ -366,11 +259,22 @@ async def _probe_wss_latency(url: str, attempt_kwargs: List[Dict[str, Any]]) -> 
         provider = None
         try:
             provider = WSProvider(url, **pk)
+            # Important: initialize the websocket connection explicitly (web3.py v6)
+            if hasattr(provider, "connect"):
+                await provider.connect()
             _aw3 = AsyncWeb3(provider)
-            is_conn = await _aw3.is_connected()
-            if not is_conn and WSS_ACCEPT_ON_PROBE:
-                _ = await _aw3.eth.block_number
-                is_conn = True
+            is_conn = False
+            try:
+                # This triggers an RPC call and validates connection
+                is_conn = await _aw3.is_connected()
+            except Exception:
+                is_conn = False
+            if (not is_conn) and WSS_ACCEPT_ON_PROBE:
+                try:
+                    _ = await _aw3.eth.block_number
+                    is_conn = True
+                except Exception:
+                    is_conn = False
             if is_conn:
                 ok = True
                 dt = time.time() - t0
@@ -399,7 +303,7 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     for k in env_keys:
         v = (os.getenv(k) or "").strip()
         if v and v not in seen:
-            candidates.append(v[:-3] if v.endswith("/ws") else v)
+            candidates.append(_clean_ws_url(v))
             seen.add(v)
     if not candidates:
         logger.info("No WSS candidates; WSS disabled.")
@@ -449,11 +353,24 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     for pk in attempt_kwargs:
         try:
             provider = WSProvider(best_url, **pk)
+            if hasattr(provider, "connect"):
+                await provider.connect()
             _aw3 = AsyncWeb3(provider)
-            if await _aw3.is_connected():
+            ok = False
+            try:
+                ok = await _aw3.is_connected()
+            except Exception:
+                ok = False
+            if not ok:
+                try:
+                    _ = await _aw3.eth.block_number
+                    ok = True
+                except Exception:
+                    ok = False
+            if ok:
                 aw3 = _aw3
                 WSS_ACTIVE_URL = best_url
-                METRICS["wss"] = f"ON({_mask_url(best_url)})"
+                METRICS["wss"] = f"ON({ _mask_url(best_url) })"
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
@@ -473,6 +390,14 @@ async def _auto_wss_initializer():
                 w = await _init_wss()
                 if w:
                     logger.info("WebSocket successfully connected.")
+
+                    # quick self-test: subscribe to newHeads and ensure events arrive
+                    try:
+                        _label = await ws_self_test(w, timeout_seconds=3.0)
+                        logger.info("WSS stream selected: %s", _label)
+                    except Exception as _e:
+                        logger.warning("WSS self-test skipped: %s", _e)
+
                     return w
                 raise ConnectionError("WSS returned None, will retry.")
             except Exception as e:
@@ -501,8 +426,10 @@ async def _auto_wss_initializer():
                 logger.warning("WebSocket appears disconnected. Attempting to reconnect...")
                 
                 if aw3 and aw3.provider:
-                    try: await aw3.provider.disconnect()
-                    except Exception: pass
+                    try:
+                        await aw3.provider.disconnect()
+                    except Exception:
+                        pass
                 
                 new_w3 = await connect_once()
                 if new_w3:
@@ -543,69 +470,62 @@ GAS_EMA_ALPHA = _env_float("GAS_EMA_ALPHA", 0.8)
 _gas_ema: Optional[float] = None
 _GAS_PRICE_CACHE: Tuple[int, float] = (0, 0.0)
 
-def get_cached_gas_price() -> int:
+# ============================ Gas cost (see gas.py) ============================
+async def get_cached_gas_price() -> int:
+    """Gas price with a 2 s cache. The RPC call runs in a worker thread so the
+    event loop is never blocked. Returns 0 if no price has ever been fetched."""
     global _GAS_PRICE_CACHE
     now = time.time()
     if now - _GAS_PRICE_CACHE[1] > 2.0:
         try:
-            _GAS_PRICE_CACHE = (int(w3.eth.gas_price), now)
-        except Exception:
-            pass
+            _GAS_PRICE_CACHE = (int(await asyncio.to_thread(lambda: w3.eth.gas_price)), now)
+        except Exception as e:
+            logger.warning("gas price fetch failed: %s", e)
     return _GAS_PRICE_CACHE[0]
 
-def predict_gas_price_wei(fast: bool = False) -> int:
+async def predict_gas_price_wei(fast: bool = False) -> int:
     global _gas_ema
+    gp = int(await get_cached_gas_price() or 0)
     if fast:
-        try:
-            return int(get_cached_gas_price() or w3.eth.gas_price)
-        except Exception:
-            return int(_gas_ema or 0) if _gas_ema else 0
-    try:
-        gp = int(get_cached_gas_price() or 0)
-    except Exception:
-        gp = int(_gas_ema or 0)
+        return gp or int(_gas_ema or 0)
     if gp <= 0:
-        return int(_gas_ema or 0) if _gas_ema else 0
-    if _gas_ema is None:
-        _gas_ema = float(gp)
-    else:
-        _gas_ema = GAS_EMA_ALPHA * float(gp) + (1.0 - GAS_EMA_ALPHA) * (_gas_ema or 0.0)
+        return int(_gas_ema or 0)
+    _gas_ema = float(gp) if _gas_ema is None else GAS_EMA_ALPHA * float(gp) + (1.0 - GAS_EMA_ALPHA) * _gas_ema
     return int(_gas_ema)
 
-def _fee_history_suggested() -> Tuple[Optional[int], Optional[int]]:
+async def _fee_history_suggested() -> Tuple[Optional[int], Optional[int]]:
     try:
-        fh = w3.eth.fee_history(10, "latest", [10, 50, 90])
+        fh = await asyncio.to_thread(w3.eth.fee_history, 10, "latest", [10, 50, 90])
         base_fees = list(map(int, fh.get("baseFeePerGas") or []))
         rewards = fh.get("reward") or []
         if not base_fees or not rewards:
             return None, None
         base = int(statistics.median(base_fees))
         prios = [int(statistics.median([int(x) for x in block])) for block in rewards if block]
-        tip = int(statistics.median(prios)) if prios else None
-        if tip is None:
+        if not prios:
             return None, None
-        max_fee = int(base + 2*tip)
-        return max_fee, tip
-    except Exception:
+        tip = int(statistics.median(prios))
+        return int(base + 2 * tip), tip
+    except Exception as e:
+        logger.warning("fee_history failed: %s", e)
         return None, None
 
-def _usd_cost_for_tx(tx: Dict[str, Any], margin: float = 1.3) -> Decimal:
-    try:
-        gas_est = w3.eth.estimate_gas({k:v for k,v in tx.items() if k in ("from","to","data","value")})
-    except Exception:
-        gas_est = TX_GAS_LIMIT
-    gp = Decimal(predict_gas_price_wei(fast=True) or w3.eth.gas_price)
-    eth = Decimal(gas_est) * gp / Decimal(1e18)
-    return (eth * (get_oracle_price("WETH") or Decimal("0"))) * Decimal(margin)
+async def usd_cost_for_tx(tx: Dict[str, Any], margin: float = 1.3) -> Decimal:
+    """USD cost of tx with a safety margin.
 
-def estimate_gas_cost(gas_limit: int, fast: bool = False) -> Decimal:
+    Raises GasCostUnavailable instead of returning 0 when the gas price or the
+    ETH/USD price is unknown: a zero cost would make every trade look profitable.
+    A failed estimate falls back to TX_GAS_LIMIT, which is an upper bound.
+    """
+    call = {k: v for k, v in tx.items() if k in ("from", "to", "data", "value")}
     try:
-        gp = Decimal(predict_gas_price_wei(fast=fast) or w3.eth.gas_price)
-    except Exception:
-        gp = Decimal(0)
-    eth_cost = (Decimal(gas_limit) * gp) / Decimal(1e18)
-    px = get_oracle_price("WETH") or Decimal("0")
-    return eth_cost * px
+        gas_units = int(await asyncio.to_thread(w3.eth.estimate_gas, call))
+    except Exception as e:
+        logger.info("estimate_gas failed (%s); using TX_GAS_LIMIT=%s as upper bound", e, TX_GAS_LIMIT)
+        gas_units = TX_GAS_LIMIT
+    gas_price = await predict_gas_price_wei(fast=True)
+    eth_usd = await asyncio.to_thread(get_oracle_price, "WETH")
+    return _gas_cost_usd(gas_units, gas_price, eth_usd, margin)
 
 # ============================ SQLite ============================
 DB_FILE = "arb_trades.db"
@@ -920,16 +840,35 @@ def get_oracle_price(symbol: str) -> Decimal:
         return cached[0] if cached else Decimal("0")
 
 # ============================ Telegram ============================
-async def send_telegram(msg: str):
+async def send_telegram(msg: str, *, parse_mode: str = "Markdown", max_retries: int | None = None):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     session = await _ensure_http_session()
-    try:
-        await session.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"})
-    except Exception as e:
-        logger.warning("Telegram send failed: %s", e)
-
+    max_retries = int(os.getenv("TELEGRAM_MAX_RETRIES", "6")) if max_retries is None else max_retries
+    base = float(os.getenv("TELEGRAM_BACKOFF_BASE", "0.6"))
+    cap = float(os.getenv("TELEGRAM_BACKOFF_CAP", "8.0"))
+    for attempt in range(max_retries):
+        try:
+            resp = await session.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": parse_mode})
+            if resp.status == 200:
+                return
+            if resp.status == 429:
+                # Respect Retry-After if provided
+                ra = resp.headers.get("Retry-After")
+                delay = float(ra) if ra and ra.isdigit() else min(cap, base * (2 ** attempt))
+                logger.warning("Telegram 429; retrying in %.2fs", delay)
+                await asyncio.sleep(delay)
+                continue
+            # Other HTTP errors — backoff and retry
+            delay = min(cap, base * (2 ** attempt))
+            logger.warning("Telegram send HTTP %s; retrying in %.2fs", resp.status, delay)
+            await asyncio.sleep(delay)
+        except Exception as e:
+            delay = min(cap, base * (2 ** attempt))
+            logger.warning("Telegram send failed: %s; retrying in %.2fs", e, delay)
+            await asyncio.sleep(delay)
+    logger.warning("Telegram send permanently failed after %s attempts.", max_retries)
 
 def pretty_timedelta(secs: int) -> str:
     m, s = divmod(int(max(0, secs)), 60)
@@ -1302,178 +1241,8 @@ async def build_graph(_: int) -> Dict[str, Dict[str, Decimal]]:
             graph.setdefault(u, {})[v] = rate * (Decimal("1.0") - SLIPPAGE)
     return graph
 
-# ============================ Graph search & scoring ============================
-def enumerate_cycles(graph: Dict[str, Dict[str, Decimal]], max_hops: int) -> List[List[str]]:
-    cycles: List[List[str]] = []
-    nodes = list(graph.keys())
-    def dfs(start, node, path, depth):
-        if depth > max_hops:
-            return
-        for nxt in graph.get(node, {}):
-            if nxt == start and len(path) >= 3:
-                if all((x not in BLACKLIST) for x in path + [nxt]):
-                    cycles.append(path + [nxt])
-            elif nxt not in path and nxt not in BLACKLIST:
-                dfs(start, nxt, path + [nxt], depth + 1)
-    for n in nodes:
-        if n in BLACKLIST:
-            continue
-        dfs(n, n, [n], 0)
-    return cycles
-
-def _johnson_simple_cycles(graph: Dict[str, Dict[str, Decimal]], max_hops: int) -> List[List[str]]:
-    index = {v: i for i, v in enumerate(graph.keys())}
-    vertices = list(graph.keys())
-    blocked: Set[str] = set()
-    B: Dict[str, Set[str]] = {v: set() for v in vertices}
-    stack: List[str] = []
-    cycles: List[List[str]] = []
-
-    def unblock(u: str):
-        if u in blocked:
-            blocked.remove(u)
-            for w in list(B[u]):
-                B[u].remove(w)
-                unblock(w)
-
-    def circuit(v: str, s: str, depth: int = 0) -> bool:
-        f = False
-        blocked.add(v)
-        stack.append(v)
-        for w in graph.get(v, {}):
-            if depth + 1 > max_hops:
-                continue
-            if w == s and len(stack) >= 2:
-                cycles.append(stack[:] + [s])
-                f = True
-            elif w not in blocked:
-                if circuit(w, s, depth + 1):
-                    f = True
-        if f:
-            unblock(v)
-        else:
-            for w in graph.get(v, {}):
-                B[w].add(v)
-        stack.pop()
-        return f
-
-    for s in vertices:
-        circuit(s, s, 0)
-        blocked = set()
-        B = {v: set() for v in vertices}
-    uniq = []
-    seen = set()
-    for c in cycles:
-        if len(c) < 3:
-            continue
-        core = c[:-1]
-        m = min(range(len(core)), key=lambda i: core[i])
-        rot = tuple(core[m:] + core[:m] + [core[m]])
-        if rot not in seen:
-            seen.add(rot)
-            uniq.append(c)
-    return uniq
-
-def bellman_ford_arbitrage(graph: Dict[str, Dict[str, Decimal]]) -> List[List[str]]:
-    nodes = list(graph.keys()); idx = {n: i for i, n in enumerate(nodes)}
-    edges: List[Tuple[int, int, float]] = []
-    for u in nodes:
-        for v, r in graph.get(u, {}).items():
-            if r > 0:
-                w = -math.log(float(r))
-                edges.append((idx[u], idx[v], w))
-    dist = [0.0] * len(nodes)
-    prev = [-1] * len(nodes)
-    cyc_paths: List[List[str]] = []
-    for _ in range(len(nodes) - 1):
-        updated = False
-        for u, v, w in edges:
-            if dist[u] + w < dist[v]:
-                dist[v] = dist[u] + w
-                prev[v] = u
-                updated = True
-        if not updated:
-            break
-    for u, v, w in edges:
-        if dist[u] + w < dist[v]:
-            x = v
-            for _ in range(len(nodes)):
-                x = prev[x]
-            cycle = []
-            cur = x
-            while True:
-                cycle.append(nodes[cur])
-                cur = prev[cur]
-                if cur == x or cur == -1:
-                    break
-            cyc_paths.append(list(reversed(cycle)))
-    return cyc_paths
-
-def dijkstra_best_path(graph: Dict[str, Dict[str, Decimal]], src: str) -> Dict[str, Tuple[float, List[str]]]:
-    import heapq
-    dist: Dict[str, float] = {src: 0.0}
-    path: Dict[str, List[str]] = {src: [src]}
-    pq = [(0.0, src)]
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d > dist.get(u, 1e18):
-            continue
-        for v, r in graph.get(u, {}).items():
-            if r <= 0:
-                continue
-            w = -math.log(float(r))
-            nd = d + w
-            if nd < dist.get(v, 1e18):
-                dist[v] = nd
-                path[v] = path[u] + [v]
-                heapq.heappush(pq, (nd, v))
-    return {k: (math.exp(-d), path[k]) for k, d in dist.items()}
-
-def refine_cycle_with_dijkstra(graph, cycle, max_hops, min_improve: float = 0.003, max_extra_hops_per_edge: int = 2) -> List[str]:
-    if not cycle or len(cycle) < 3:
-        return cycle
-    start = cycle[0]
-    refined: List[str] = [start]
-    current_hops = 0
-    for i in range(len(cycle) - 1):
-        u, v = cycle[i], cycle[i+1]
-        direct = graph.get(u, {}).get(v)
-        if direct is None or direct <= 0:
-            if refined[-1] != u:
-                refined.append(u)
-            refined.append(v)
-            current_hops += 1
-            continue
-        best_from_u = dijkstra_best_path(graph, u)
-        best_uv = best_from_u.get(v)
-        if not best_uv:
-            if refined[-1] != u:
-                refined.append(u)
-            refined.append(v)
-            current_hops += 1
-            continue
-        rate, path = best_uv
-        extra_hops = max(0, len(path) - 2)
-        if extra_hops > max_extra_hops_per_edge:
-            path = [u, v]
-            extra_hops = 0
-        if rate <= float(direct) * (1.0 + min_improve) or (current_hops + 1 + extra_hops) > max_hops:
-            path = [u, v]
-            extra_hops = 0
-        if refined[-1] != u:
-            refined.append(u)
-        for node in path[1:]:
-            refined.append(node)
-        current_hops += 1 + extra_hops
-        if current_hops > max_hops:
-            if refined[-1] != start:
-                refined[-1] = start
-            break
-    if refined[-1] != start:
-        refined.append(start)
-    if len(refined) - 1 > max_hops:
-        return cycle
-    return refined
+# ============================ Graph search (see graph.py) ============================
+from .graph import enumerate_cycles, bounded_simple_cycles, bellman_ford_arbitrage, dijkstra_best_path, refine_cycle_with_dijkstra
 
 def profit_usd(token: str, token_delta: Decimal) -> Decimal:
     dec = TOKENS.get(token, BASELINE_TOKEN_INFO.get(token, {"decimals": 18}))["decimals"]
@@ -1540,7 +1309,7 @@ def erc20_allowance(token: str, owner: str, spender: str) -> int:
         return 0
 
 # ============================ Nonce / TX opts ============================
-from nonce_manager import NonceMgr
+from .nonce import NonceMgr
 
 NONCE = NonceMgr(w3, ACCOUNT_ADDRESS or "0x0000000000000000000000000000000000000000")
 
@@ -1558,11 +1327,11 @@ async def tx_opts_base_async(fast_gas: bool = False) -> Dict[str, Any]:
         "chainId": chain_id,
     }
     if _chain_uses_legacy_gas(chain_id):
-        d["gasPrice"] = int(get_cached_gas_price() or 0) if fast_gas else int(predict_gas_price_wei(fast=False) or 0)
+        d["gasPrice"] = int(await get_cached_gas_price() or 0) if fast_gas else int(await predict_gas_price_wei(fast=False) or 0)
     else:
-        max_fee, tip = _fee_history_suggested()
+        max_fee, tip = await _fee_history_suggested()
         if max_fee is None or tip is None:
-            max_fee = (int(get_cached_gas_price() or 0) if (fast_gas or MAX_FEE_PER_GAS_GWEI == 0)
+            max_fee = (int(await get_cached_gas_price() or 0) if (fast_gas or MAX_FEE_PER_GAS_GWEI == 0)
                        else w3.to_wei(float(MAX_FEE_PER_GAS_GWEI), "gwei"))
             tip = w3.to_wei(float(MAX_PRIORITY_FEE_GWEI), "gwei")
         d["maxFeePerGas"] = int(max_fee)
@@ -1570,19 +1339,17 @@ async def tx_opts_base_async(fast_gas: bool = False) -> Dict[str, Any]:
     return d
 
 # ============================ Simulate / send / monitor ============================
-def simulate_tx(tx: Dict[str, Any]) -> bool:
+async def simulate_tx(tx: Dict[str, Any]) -> bool:
+    """eth_call the transaction off the event loop. A revert means skip.
+    (The old version fell back to estimate_gas after a revert, which re-runs
+    the same simulation and only added a second blocking RPC call.)"""
     call_dict = {k: v for k, v in tx.items() if k in ("from", "to", "data", "value")}
     try:
-        w3.eth.call(call_dict); return True
+        await asyncio.to_thread(w3.eth.call, call_dict)
+        return True
     except Exception as e:
-        logger.debug("Simulate eth_call failed: %s. Trying estimate_gas.", e)
-        try:
-            gas_est = w3.eth.estimate_gas(call_dict)
-            logger.debug("Simulate estimate_gas OK, est: %d", gas_est)
-            return gas_est <= tx.get("gas", TX_GAS_LIMIT)
-        except Exception as e2:
-            logger.warning("Simulate failed on both call and estimate_gas: %s", e2)
-            return False
+        logger.info("simulation reverted or failed: %s", e)
+        return False
 
 async def send_tx_async(tx: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     if not ALLOW_LIVE_TRANSACTIONS:
@@ -1858,7 +1625,7 @@ async def build_v2_swap_tx(router, amount_in: int, min_out: int, path: List[str]
             int(amount_in), int(min_out), [Web3.to_checksum_address(p) for p in path],
             Web3.to_checksum_address(to), int(deadline)
         ).build_transaction(opts)
-        if simulate_tx(tx1):
+        if await simulate_tx(tx1):
             return tx1, "v2.swapSupporting"
     except Exception:
         pass
@@ -1867,7 +1634,7 @@ async def build_v2_swap_tx(router, amount_in: int, min_out: int, path: List[str]
             int(amount_in), int(min_out), [Web3.to_checksum_address(p) for p in path],
             Web3.to_checksum_address(to), int(deadline)
         ).build_transaction(opts)
-        if simulate_tx(tx2):
+        if await simulate_tx(tx2):
             return tx2, "v2.swap"
     except Exception:
         pass
@@ -1889,7 +1656,7 @@ async def unwrap_weth_if_configured(target_sym: str) -> None:
             return
         weth_c = w3.eth.contract(address=Web3.to_checksum_address(weth_addr), abi=WETH_MIN_ABI)
         tx = weth_c.functions.withdraw(int(bal)).build_transaction(await tx_opts_base_async(fast_gas=False))
-        if not simulate_tx(tx):
+        if not await simulate_tx(tx):
             return
         ok, txh = await send_tx_async(tx)
         await log_recovery_op("weth.withdraw", weth_addr, "ETH", bal, 0, txh, "submitted")
@@ -1904,7 +1671,7 @@ async def redeem_erc4626(token: str, amount: int) -> Tuple[bool, Optional[str], 
         v = w3.eth.contract(address=Web3.to_checksum_address(token), abi=ERC4626_ABI_MIN)
         underlying = v.functions.asset().call()
         tx = v.functions.redeem(int(amount), Web3.to_checksum_address(ACCOUNT_ADDRESS), Web3.to_checksum_address(ACCOUNT_ADDRESS)).build_transaction(await tx_opts_base_async(fast_gas=False))
-        if not simulate_tx(tx):
+        if not await simulate_tx(tx):
             logger.debug("ERC4626 redeem simulate failed token=%s", token)
             return False, None, None, None
         ok, txh = await send_tx_async(tx)
@@ -1927,7 +1694,7 @@ async def redeem_aave_atoken(a_token: str, amount: int) -> Tuple[bool, Optional[
         if not underlying: return False, None, None, None
 
         tx = aave_pool.functions.withdraw(Web3.to_checksum_address(underlying), int(amount), Web3.to_checksum_address(ACCOUNT_ADDRESS)).build_transaction(await tx_opts_base_async(fast_gas=False))
-        if not simulate_tx(tx):
+        if not await simulate_tx(tx):
             logger.debug("Aave withdraw simulate failed aToken=%s", a_token)
             return False, None, None, None
         ok, txh = await send_tx_async(tx)
@@ -1967,7 +1734,7 @@ async def remove_liquidity_v2(lp_token: str, router_pref: str = "SUSHI") -> Tupl
             t0, t1, int(liq), int(amt0_min), int(amt1_min),
             Web3.to_checksum_address(ACCOUNT_ADDRESS), int(chain_deadline(300))
         ).build_transaction(await tx_opts_base_async(fast_gas=False))
-        if not simulate_tx(tx):
+        if not await simulate_tx(tx):
             logger.debug("removeLiquidity simulate failed")
             return False, None, None, None, None, None
         ok, txh = await send_tx_async(tx)
@@ -2023,12 +1790,12 @@ async def _approve_if_needed(token: str, spender: str, amount: int) -> Optional[
         # some tokens require allowance=0 before raising
         if cur_allow > 0:
             tx0 = c.functions.approve(spender_cs, 0).build_transaction(await tx_opts_base_async(fast_gas=False))
-            if not simulate_tx(tx0): return None
+            if not await simulate_tx(tx0): return None
             ok0, h0 = await send_tx_async(tx0)
             if not ok0 or not h0: return None
             await wait_receipt(h0, 180)
         tx1 = c.functions.approve(spender_cs, int(UINT_MAX)).build_transaction(await tx_opts_base_async(fast_gas=False))
-        if not simulate_tx(tx1): return None
+        if not await simulate_tx(tx1): return None
         ok1, h1 = await send_tx_async(tx1)
         return h1 if ok1 else None
     except Exception as e:
@@ -2252,7 +2019,8 @@ def features_for_cycle(graph: Dict[str, Dict[str, Decimal]], cycle: List[str], s
     feats["oracle_div"] = abs(feats["path_spread"])
     size_usd = float(usd_notional(cycle[0], size))
     feats["size_usd_log"] = math.log(max(1.0, size_usd))
-    gp = float(predict_gas_price_wei(fast=fast_gas) or w3.eth.gas_price)
+    # Feature only: use the cached price, never a blocking RPC call from sync code.
+    gp = float(_GAS_PRICE_CACHE[0] or _gas_ema or 0.0)
     gas_floor = max(1e-9, gp if gp > 0 else float(_gas_ema or 1.0))
     feats["gas_ema_log"] = math.log(gas_floor)
     feats["uniq_tokens"] = float(len(set(cycle)))
@@ -2322,7 +2090,7 @@ async def withdraw_profits():
             tx = exec_mgmt.functions.withdrawProfit(token_cs).build_transaction(await tx_opts_base_async(fast_gas=False))
         except Exception:
             continue
-        if not simulate_tx(tx):
+        if not await simulate_tx(tx):
             if DEBUG_DECISIONS:
                 logger.info("[WITHDRAW] simulate failed token=%s bal=%s", token_cs, exec_bal)
             continue
@@ -2474,7 +2242,11 @@ async def choose_best_provider_and_size(
                 Web3.to_checksum_address(cycle[0]), int(size), encode_flashloan_params(p, cycle[0], size, payload_temp), int(deadline_temp)
             ).build_transaction(await tx_opts_base_async(fast_gas=fast_gas))
             
-            gas_cost_usd = _usd_cost_for_tx(tx_temp)
+            try:
+                gas_cost_usd = await usd_cost_for_tx(tx_temp)
+            except GasCostUnavailable as e:
+                logger.info("[ARB] skip provider %s: %s", p, e)
+                continue
             gross_usd = profit_usd(cycle[0], gtokens)
             net_usd = gross_usd - gas_cost_usd
 
@@ -2507,9 +2279,9 @@ async def arbitrage_strategy(trigger: str = "poll") -> bool:
             pass
 
     if USE_JOHNSON_CYCLES:
-        cycles = _johnson_simple_cycles(graph, MAX_HOPS)
+        cycles = bounded_simple_cycles(graph, MAX_HOPS, BLACKLIST)
     else:
-        cycles = enumerate_cycles(graph, MAX_HOPS)
+        cycles = enumerate_cycles(graph, MAX_HOPS, BLACKLIST)
     bf_cycles = bellman_ford_arbitrage(graph)
     for c in bf_cycles:
         if c and c[0] == c[-1] and c not in cycles:
@@ -2568,12 +2340,16 @@ async def arbitrage_strategy(trigger: str = "poll") -> bool:
                 int(deadline)
             ).build_transaction(await tx_opts_base_async(fast_gas=fast_gas))
             
-            gas_cost_final = _usd_cost_for_tx(tx)
+            try:
+                gas_cost_final = await usd_cost_for_tx(tx)
+            except GasCostUnavailable as e:
+                logger.info("[ARB] skip: %s", e)
+                continue
             if (gross_usd - gas_cost_final) < MIN_PROFIT_USD:
                 logger.info("[ARB] Final check failed: profit too low after precise gas. est_net=$%.2f final_net=$%.2f", net_usd, gross_usd - gas_cost_final)
                 continue
 
-            if not simulate_tx(tx):
+            if not await simulate_tx(tx):
                 if DEBUG_DECISIONS:
                     logger.info("[ARB] skip: simulate failed path=%s size=%s prov=%s", "->".join(refined), size, provider)
                 continue
@@ -2737,17 +2513,17 @@ async def mempool_loop():
                 if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                 try:
                     if mode == "pending":
-                        sub = await aw3.eth.subscribe("newPendingTransactions")
+                        sub = await _ws_subscribe(aw3, "newPendingTransactions")
                         logger.info("WSS subscribed to newPendingTransactions on %s", _mask_url(WSS_ACTIVE_URL))
-                        async for ev in sub:
+                        async for ev in _iter_ws_subscription(aw3, sub):  # via compat stream
                             if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
-                            txh = ev.hex() if isinstance(ev, (bytes, bytearray)) else str(ev)
+                            txh = _extract_tx_hash_from_event(ev) or ""
                             if txh.startswith("0x"):
                                 asyncio.create_task(process_pending_tx_hash(txh))
                     elif mode == "newheads":
-                        sub = await aw3.eth.subscribe("newHeads")
+                        sub = await _ws_subscribe(aw3, "newHeads")
                         logger.info("WSS subscribed to newHeads on %s", _mask_url(WSS_ACTIVE_URL))
-                        async for hdr in sub:
+                        async for hdr in _iter_ws_subscription(aw3, sub):  # via compat stream
                             if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                             bn = hdr.get("number")
                             if bn is not None: _on_new_block(int(bn, 16) if isinstance(bn, str) else int(bn))
@@ -2756,7 +2532,7 @@ async def mempool_loop():
                     await asyncio.sleep(5)
                 finally:
                     if sub:
-                        try: await aw3.eth.unsubscribe(sub.id)
+                        try: await _ws_unsubscribe(aw3, sub)
                         except Exception: pass
         else:
             logger.warning("Mempool polling via HTTP is inefficient and not recommended. Running in degraded mode.")
@@ -2771,9 +2547,9 @@ async def block_header_loop():
         sub = None
         if aw3 is not None and WSS_ACTIVE_URL and "newheads" not in [m.lower() for m in WSS_SUBSCRIBE_ORDER]:
             try:
-                sub = await aw3.eth.subscribe("newHeads")
+                sub = await _ws_subscribe(aw3, "newHeads")
                 logger.info("WSS block header listener on %s", _mask_url(WSS_ACTIVE_URL))
-                async for hdr in sub:
+                async for hdr in _iter_ws_subscription(aw3, sub):  # via compat stream
                     if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                     bn = hdr.get("number")
                     if bn is not None: _on_new_block(int(bn, 16) if isinstance(bn, str) else int(bn))
@@ -2782,11 +2558,11 @@ async def block_header_loop():
                 await asyncio.sleep(5)
             finally:
                 if sub:
-                    try: await aw3.eth.unsubscribe(sub.id)
+                    try: await _ws_unsubscribe(aw3, sub)
                     except Exception: pass
         else:
             try:
-                bn = await asyncio.to_thread(w3.eth.block_number)
+                bn = await asyncio.to_thread(lambda: w3.eth.block_number)
                 if isinstance(bn, int) and bn != last:
                     _on_new_block(bn)
                     last = bn
@@ -3071,12 +2847,16 @@ async def run_liquidation_cycle():
                             int(deadline)
                         ).build_transaction(await tx_opts_base_async(fast_gas=True))
                         
-                        gas_cost_usd = _usd_cost_for_tx(tx)
+                        try:
+                            gas_cost_usd = await usd_cost_for_tx(tx)
+                        except GasCostUnavailable as e:
+                            logger.info("Liquidation skipped: %s", e)
+                            continue
                         if min_profit_usd < gas_cost_usd:
                             logger.info("Liquidation profit $%.2f less than gas cost $%.2f, skipping.", min_profit_usd, gas_cost_usd)
                             continue
 
-                        if simulate_tx(tx):
+                        if await simulate_tx(tx):
                             ok, txh = await send_tx_async(tx)
                             if ok and txh:
                                 METRICS["liqs_total"] += 1
@@ -3186,8 +2966,43 @@ async def main():
         logger.info("Shutdown complete.")
 
 
-if __name__ == "__main__":
+
+def _extract_tx_hash_from_event(ev) -> str | None:
+    """Minimal, defensive parse for pending-tx subscription payloads."""
+    if isinstance(ev, (bytes, bytearray)):
+        return ev.hex()
+    if isinstance(ev, str):
+        return ev if ev.startswith("0x") else None
+    if isinstance(ev, dict):
+        for k in ("hash", "transactionHash", "txHash"):
+            v = ev.get(k)
+            if isinstance(v, (bytes, bytearray)):
+                return v.hex()
+            if isinstance(v, str):
+                return v
+    return None
+# ============================ Self-test simulation ============================
+async def selftest_simulation(blocks: int = 3, pendings: int = 5):
+    """Injects fake newHeads and pending tx events into the existing handlers for a quick E2E smoke test.
+    It ONLY runs when explicitly called.
+    """
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt caught, shutting down.")
+        WSS_READY_EVENT.set()
+    except Exception:
+        pass
+    # Simulate headers
+    start = int(METRICS.get("last_block", 100000)) if isinstance(METRICS.get("last_block"), int) else 100000
+    for i in range(blocks):
+        _on_new_block(start + i + 1)
+        await asyncio.sleep(0)
+    # Simulate pending tx hashes
+    for i in range(pendings):
+        fake_txh = "0x" + format(i, "064x")
+        try:
+            await process_pending_tx_hash(fake_txh)
+        except Exception as e:
+            logger.debug("Selftest pending-tx error for %s: %s", fake_txh, e)
+    try:
+        WSS_READY_EVENT.clear()
+    except Exception:
+        pass

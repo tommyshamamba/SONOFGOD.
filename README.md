@@ -31,7 +31,7 @@ These are development projects with local demonstration workflows. The [verifica
 | [Blockchain API Service](portfolio-projects/blockchain-api-service/) | API authentication and data access | Dashboard, persistent hashed API keys, revocation and an offline query mode; provider configuration supports further integration. |
 | [Kubernetes Demo](portfolio-projects/kubernetes-demo/) | Containerized application delivery | Frontend and backend, Docker Compose, Kubernetes manifests and Terraform configuration. |
 | [Terraform Modules](portfolio-projects/terraform-modules/) | Reusable infrastructure | VPC and application load-balancer modules with examples. |
-| [On-chain Execution Engine](onchain-execution-engine/) | Event-driven processing and transaction coordination | Async block streaming with WebSocket failover, price-graph cycle detection, nonce management and a Solidity executor, covered by offline Python and in-memory EVM tests. |
+| [On-chain Execution Engine](onchain-execution-engine/) | Security and design case study (research prototype) | Flash-loan executor contract with one-time callback binding, a timelocked UUPS upgrade and a guardian pause. The Python engine is split into a package, with offline tests and an honest limitations list. |
 | [Voice AI Missed-Call](portfolio-projects/voice-ai-missed-call/) | Event processing and automation | Local missed-call simulation, saved response drafts and duplicate-event handling, plus provider integration guides. |
 
 ## Run a project
@@ -68,7 +68,7 @@ platform-engineering-portfolio/
 ├── portfolio-projects/   # Six application/infrastructure projects
 ├── docs/                 # Catalog, demo guides and verification reports
 │   └── plans/            # Three proposed systems and delivery milestones
-├── onchain-execution-engine/ # Research prototype: event processing + Solidity executor, offline tests
+├── onchain-execution-engine/ # Case study: executor contract + engine package, offline tests
 ├── scripts/              # Source checks and browser smoke checks
 ├── .github/workflows/    # Automated project checks
 └── CONTRIBUTING.md       # Development and contribution workflow

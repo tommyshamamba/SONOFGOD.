@@ -20,7 +20,7 @@ All six browser journeys passed with no uncaught browser exceptions. See [the ap
 | Containers | Blockchain and Kubernetes Compose images build, become healthy, serve the frontend and proxy an API request. |
 | Terraform | Four directories initialize without a backend and validate. Nine mock-provider cases cover VPC routing and ALB security-group/listener configuration; no AWS resources are provisioned. |
 | Dependency checks | Ten npm lockfile audits and a hash-locked Python dependency audit. Audit results describe published advisories at run time. |
-| Legacy experiments | 23 local EVM tests and 16 Python tests. Uses the repository proxy, synthetic contract fixtures, extracted bot functions and mocked network behavior; enforces the EIP-170 bytecode limit. |
+| On-chain engine case study | 23 local EVM tests and 26 Python tests. Uses the repository proxy, synthetic contract fixtures, extracted engine functions and mocked network behavior; enforces the EIP-170 bytecode limit. |
 
 The frontend container images now include HTTP health checks, so Compose waits for the web server to accept requests before testing it. The banking prototype exposes supported permissions, rejects self-approval and duplicate posting, and labels its GL output as simulated.
 

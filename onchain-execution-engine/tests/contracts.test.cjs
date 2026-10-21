@@ -212,9 +212,9 @@ test('owner and pause controls remain enforced; implementation cannot initialize
   await assert.rejects(() => f.call(f.implementation, 'initialize', [owner, owner]), /InvalidInitialization/);
 });
 
-test('compiled ABI matches both Python request and management ABIs', () => {
+test('compiled ABI matches the engine Python request and management ABIs', () => {
   const actual = new Interface(artifacts['FlashExecutor.sol'].Power.abi);
-  for (const filename of ['arbitrage_engine.py', 'stream_engine.py']) {
+  for (const filename of ['onchain_engine/engine.py']) {
     const text = fs.readFileSync(path.join(__dirname, '..', filename), 'utf8');
     for (const name of ['EXECUTOR_ABI', 'EXECUTOR_MGMT_ABI']) {
       const match = text.match(new RegExp(`${name} = json\\.loads\\('([^']+)'\\)`));

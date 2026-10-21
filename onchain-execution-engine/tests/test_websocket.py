@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any, AsyncIterator, Dict
 import unittest
 
-SOURCE = Path(__file__).resolve().parent.parent / "stream_engine.py"
+SOURCE = Path(__file__).resolve().parent.parent / "onchain_engine" / "ws_compat.py"
 
 
 def helpers():
@@ -70,12 +70,13 @@ class WebsocketTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("self-test OK" in message for message in logs.output))
         self.assertEqual(unsubscribed, ["header-id"])
 
-    def test_helpers_have_one_definition_before_the_main_entry_point(self):
+    def test_helpers_are_defined_once_and_module_has_no_side_effects(self):
         tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
         iterators = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "_iter_ws_subscription"]
         self.assertEqual(len(iterators), 1)
-        self.assertIsInstance(tree.body[-1], ast.If)
-        self.assertIn("__name__", ast.unparse(tree.body[-1].test))
+        # Only imports, definitions, a logger assignment and docstrings at module level.
+        allowed = (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Assign, ast.Expr)
+        self.assertTrue(all(isinstance(node, allowed) for node in tree.body))
 
 
 if __name__ == "__main__":

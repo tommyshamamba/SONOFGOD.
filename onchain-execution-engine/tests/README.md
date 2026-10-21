@@ -27,11 +27,11 @@ runtime exceeds the EIP-170 bytecode limit. These settings are required; the
 ordinary compilation pipeline produces an oversized contract. Dependencies and
 integrities are fixed in `package-lock.json`. The compiler's `tmp` dependency is
 overridden to the patched 0.2.7 release; its public API remains compatible. ABI
-compatibility is checked against both bots' embedded request/management ABIs;
+compatibility is checked against the engine's embedded request/management ABIs;
 no hand-edited ABI artifact is needed.
 
 The suite now covers the repository's own ERC-1967 proxy and includes **23 EVM
-tests and 16 Python tests**. See [current verification](../docs/VERIFICATION.md)
+tests and 26 Python tests**. See [current verification](../docs/VERIFICATION.md)
 for the tested commit and results. Compilation enforces the 24,576-byte EIP-170
 limit; no contract is deployed outside the test VM.
 
@@ -75,7 +75,7 @@ The nonce helper coordinates one process with exclusive account ownership. Its
 state is not durable across restarts and private-relay acceptance does not prove
 mining. After an ambiguous send or expired private transaction, reconcile receipts
 and pending transactions before restarting or resuming with that account. Do not
-run both bots against the same account concurrently.
+run two engine processes against the same account concurrently.
 
 The new active-loan struct consumes five slots from the original 45-slot storage
 gap; the test asserts its size and remaining gap. This does not authorize an
