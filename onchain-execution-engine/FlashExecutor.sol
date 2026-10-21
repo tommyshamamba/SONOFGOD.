@@ -1,6 +1,6 @@
-// file: contracts/Power.sol
+// file: FlashExecutor.sol (contract Power)
 // SPDX-License-Identifier: MIT
-// Experimental executor. Local lender regression tests: legacy-tests/README.md.
+// Experimental executor. Local lender regression tests: tests/README.md.
 pragma solidity ^0.8.22;
 
 // --- OpenZeppelin Imports ---

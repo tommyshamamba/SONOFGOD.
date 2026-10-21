@@ -2,13 +2,13 @@
 
 These documents turn three project ideas into scoped implementation plans. Each proposal describes intended behavior, design choices, and evidence needed before making performance or production claims.
 
-**Status: design proposals; not implemented. No validated benchmarks are available for these proposals.** They are documentation within SONOFGOD, not separate deployed applications or GitHub repositories.
+**Status: design proposals; not implemented. No validated benchmarks are available for these proposals.** They are documentation within this portfolio repository, not separate deployed applications or GitHub repositories.
 
 | Proposal | First useful release | Next evidence to produce |
 |---|---|---|
 | [Computer vision processing platform](cv-platform-1m-day.md) | An asynchronous image-processing pipeline with durable job state and retries | A reproducible workload, correctness checks, and measured throughput |
 | [RAG agent platform](rag-agent-platform.md) | Document ingestion and answers grounded in permission-filtered sources | A versioned evaluation set with retrieval, answer-quality, latency, and cost results |
-| [Custom print commerce](stickermule-clone.md) | Product catalog, persistent cart, and verified test-mode checkout | End-to-end order tests, tenant isolation checks, and webhook replay results |
+| [Custom print commerce](commerce-backend.md) | Product catalog, persistent cart, and verified test-mode checkout | End-to-end order tests, tenant isolation checks, and webhook replay results |
 
 ## Start with existing code
 

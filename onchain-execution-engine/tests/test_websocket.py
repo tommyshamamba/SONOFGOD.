@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any, AsyncIterator, Dict
 import unittest
 
-SOURCE = Path(__file__).resolve().parent.parent / "JEHOVAH2.0.py"
+SOURCE = Path(__file__).resolve().parent.parent / "stream_engine.py"
 
 
 def helpers():

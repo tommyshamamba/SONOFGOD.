@@ -27,4 +27,4 @@ The [CV, RAG and commerce proposals](plans/README.md) define future implementati
 
 ## Legacy experiments
 
-The [isolated regression suite](../legacy-tests/README.md) covers selected contract and transaction-coordination logic. Real lender/router deployments, market assumptions, every strategy adapter, storage upgrades and operational trading require independent review. Local fixture profits are synthetic and establish no financial result.
+The [isolated regression suite](../onchain-execution-engine/tests/README.md) covers selected contract and transaction-coordination logic. Real lender/router deployments, market assumptions, every strategy adapter, storage upgrades and operational trading require independent review. Local fixture profits are synthetic and establish no financial result.

@@ -1,6 +1,6 @@
 # Legacy executor: isolated regression suite
 
-This suite compiles `../Power2.sol` and runs it behind an ERC-1967 proxy in a fresh
+This suite compiles `../FlashExecutor.sol` and runs it behind an ERC-1967 proxy in a fresh
 in-memory EthereumJS VM. Lenders, tokens and the swap router are local fixtures.
 It opens no RPC connection, reads no wallet keys, and deploys nothing to a network.
 The synthetic signing keys in the tests have no external use.
@@ -18,7 +18,7 @@ npm run compile
 From the repository root:
 
 ```sh
-python -m unittest discover -s legacy-tests -p "test_*.py" -v
+python -m unittest discover -s onchain-execution-engine/tests -p "test_*.py" -v
 ```
 
 The Solidity build pins compiler 0.8.37 and OpenZeppelin 5.0.2, uses the Shanghai

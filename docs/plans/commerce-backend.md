@@ -2,7 +2,7 @@
 
 **Status: design proposal; not implemented. No validated benchmarks.**
 
-Working identifier: `stickermule-clone`. The proposed product is an independent custom-print commerce demonstration. It is not affiliated with or endorsed by Sticker Mule, and it does not reproduce that company's proprietary implementation or brand assets.
+Working identifier: `custom-print-storefront`. The proposed product is an independent custom-print commerce demonstration.
 
 [All proposals](README.md) · [Project catalog](../PROJECT_CATALOG.md) · [Existing storefront](../../trace-stores/apps/storefront/README.md)
 

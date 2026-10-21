@@ -1,5 +1,5 @@
 {
-  "name": "sonofgod-legacy-local-tests",
+  "name": "onchain-execution-engine-tests",
   "version": "1.0.0",
   "private": true,
   "description": "Isolated compiler and in-memory EVM regression tests; no external RPC",

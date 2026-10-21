@@ -31,7 +31,7 @@ def main():
         parser.error("Node is required. Install Node or provide --node PATH.")
     errors = []
     counts = {"json": 0, "python": 0, "javascript": 0}
-    for base in [ROOT / "portfolio-projects", ROOT / "trace-stores", ROOT / "scripts", ROOT / "legacy-tests"]:
+    for base in [ROOT / "portfolio-projects", ROOT / "trace-stores", ROOT / "scripts", ROOT / "onchain-execution-engine"]:
         for path in source_files(base):
             rel = path.relative_to(ROOT)
             if not path.is_file() or any(part in SKIP for part in rel.parts):

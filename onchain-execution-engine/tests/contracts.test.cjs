@@ -27,7 +27,7 @@ async function fixture() {
   for (const key of [ownerKey, strangerKey]) {
     await vm.stateManager.putAccount(createAddressFromPrivateKey(key), createAccount({ balance: 10n ** 30n }));
   }
-  const powerArtifact = artifacts['Power2.sol'].Power;
+  const powerArtifact = artifacts['FlashExecutor.sol'].Power;
   const powerInterface = new Interface(powerArtifact.abi);
   async function transact(data, to, key = ownerKey) {
     const from = createAddressFromPrivateKey(key);
@@ -213,8 +213,8 @@ test('owner and pause controls remain enforced; implementation cannot initialize
 });
 
 test('compiled ABI matches both Python request and management ABIs', () => {
-  const actual = new Interface(artifacts['Power2.sol'].Power.abi);
-  for (const filename of ['SONOFGOD.py', 'JEHOVAH2.0.py']) {
+  const actual = new Interface(artifacts['FlashExecutor.sol'].Power.abi);
+  for (const filename of ['arbitrage_engine.py', 'stream_engine.py']) {
     const text = fs.readFileSync(path.join(__dirname, '..', filename), 'utf8');
     for (const name of ['EXECUTOR_ABI', 'EXECUTOR_MGMT_ABI']) {
       const match = text.match(new RegExp(`${name} = json\\.loads\\('([^']+)'\\)`));
@@ -228,7 +228,7 @@ test('compiled ABI matches both Python request and management ABIs', () => {
 });
 
 test('active-loan fields consume exactly five slots from the existing storage gap', () => {
-  const layout = artifacts['Power2.sol'].Power.storageLayout;
+  const layout = artifacts['FlashExecutor.sol'].Power.storageLayout;
   const active = layout.storage.find(s => s.label === '_activeLoan');
   const gap = layout.storage.find(s => s.label === '__gap');
   assert.equal(layout.types[active.type].numberOfBytes, '160');

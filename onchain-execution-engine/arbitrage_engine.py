@@ -1,170 +1,17 @@
-# ============================ WSS compat (web3.py v6/v7) ============================
-from dataclasses import dataclass
-from typing import Any, Dict, AsyncIterator
-
-@dataclass(frozen=True)
-class _WSSubscription:
-    id: str
-    method: str
-    _aw3: Any
-
-    # Allow: `async for ev in sub:` to work transparently
-    def __aiter__(self) -> AsyncIterator[Any]:  # type: ignore[override]
-        return _iter_ws_subscription(self._aw3, self)
-
-async def _ws_subscribe(aw3, method: str, params=None) -> _WSSubscription:
-    sid = await aw3.eth.subscribe(method, [] if params is None else params)
-    return _WSSubscription(id=sid, method=method, _aw3=aw3)
-
-def _ws_stream(aw3) -> AsyncIterator[Dict[str, Any]]:
-    """Return an async iterator over provider subscription messages across web3.py versions.
-
-    Tries, in order:
-      - web3.py v7: aw3.socket.process_subscriptions()
-      - web3.py v6: aw3.ws.listen_to_websocket()
-      - Provider-bound variants (aw3.provider.socket / ws / websocket / _ws)
-      - A direct async-iterable websocket object (as last resort)
-    """
-    roots = [aw3]
-    prov = getattr(aw3, "provider", None)
-    if prov:
-        roots.append(prov)
-    objs = []
-    for root in roots:
-        for attr in ("socket", "ws", "websocket", "_ws"):
-            obj = getattr(root, attr, None)
-            if obj is not None:
-                objs.append(obj)
-
-    # v7: .process_subscriptions()
-    for obj in objs:
-        cb = getattr(obj, "process_subscriptions", None)
-        if callable(cb):
-            return cb()
-
-    # v6: .listen_to_websocket()
-    for obj in objs:
-        cb = getattr(obj, "listen_to_websocket", None)
-        if callable(cb):
-            return cb()
-
-    # If any candidate is directly async-iterable, use it
-    for obj in objs:
-        try:
-            ait = obj.__aiter__  # type: ignore[attr-defined]
-        except Exception:
-            ait = None
-        if callable(ait):
-            return obj  # itself can be `async for`'d
-
-    raise RuntimeError("No websocket subscription stream found on AsyncWeb3 instance.")
-
-
-
-def _detect_ws_stream_label(aw3) -> str:
-    """Return which underlying websocket interface will be used (for logging/self-test)."""
-    provider = getattr(aw3, 'provider', None) or getattr(aw3, 'ws', None)
-    if provider is None:
-        return "none"
-    # web3>=6 AsyncHTTPProvider has .ws attr during ws, older adapters may expose .socket
-    if hasattr(provider, 'ws') and hasattr(getattr(provider, 'ws', None), 'receive'):
-        return "provider.ws.receive"
-    if hasattr(provider, 'ws') and hasattr(getattr(provider, 'ws', None), '__aiter__'):
-        return "provider.ws.__aiter__"
-    if hasattr(provider, 'socket') and hasattr(getattr(provider, 'socket', None), 'recv'):
-        return "provider.socket.recv"
-    return "unknown"
-
-async def ws_self_test(aw3, timeout_seconds: float = 5.0) -> str:
-    """Subscribe to newHeads briefly to verify events arrive; returns stream label."""
-    label = _detect_ws_stream_label(aw3)
-    try:
-        sub = await _ws_subscribe(aw3, "newHeads")
-        # try to read one event using our iterator with a hard timeout
-        try:
-            async def _one():
-                async for _ in _iter_ws_subscription(aw3, sub, timeout=timeout_seconds):
-                    return True
-            ok = await asyncio.wait_for(_one(), timeout=timeout_seconds + 1.0)
-        finally:
-            try:
-                await _ws_unsubscribe(aw3, sub)
-            except Exception:
-                pass
-        if ok:
-            logger.info(f"WSS self-test OK via {label}")
-        else:
-            logger.warning(f"WSS self-test: no events within {timeout_seconds:.1f}s via {label}")
-    except Exception as e:
-        logger.warning(f"WSS self-test failed via {label}: {e}")
-    return label
-
-
-def _ws_extract(message):
-    """Normalize raw JSON-RPC and web3.py's decoded subscription messages."""
-    from collections.abc import Mapping
-    if isinstance(message, (bytes, bytearray, str)):
-        try:
-            message = json.loads(message)
-        except (ValueError, UnicodeDecodeError):
-            return None, None
-    if not isinstance(message, Mapping):
-        return None, None
-    payload = message.get("params", message)
-    if not isinstance(payload, Mapping):
-        return None, None
-    return payload.get("subscription"), payload.get("result")
-
-
-async def _iter_ws_subscription(aw3, sub: _WSSubscription, timeout: float = None) -> AsyncIterator[Any]:
-    """Read one subscription; the caller owns unsubscribe and reconnect behavior."""
-    if timeout is not None and timeout <= 0:
-        raise ValueError("Subscription timeout must be positive")
-    iterator = _ws_stream(aw3).__aiter__()
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout if timeout is not None else None
-    try:
-        while True:
-            try:
-                if deadline is None:
-                    message = await iterator.__anext__()
-                else:
-                    remaining = deadline - loop.time()
-                    if remaining <= 0:
-                        raise asyncio.TimeoutError("subscription idle timeout")
-                    message = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
-            except StopAsyncIteration:
-                raise ConnectionError("WebSocket subscription stream ended") from None
-            sid, result = _ws_extract(message)
-            if sid == sub.id:
-                if timeout is not None:
-                    deadline = loop.time() + timeout
-                yield result
-    finally:
-        close = getattr(iterator, "aclose", None)
-        if close is not None:
-            await close()
-
-async def _ws_unsubscribe(aw3, sub) -> None:
-    sid = getattr(sub, "id", sub)
-    try:
-        await aw3.eth.unsubscribe(sid)
-    except Exception:
-        pass
-# ============================ end WSS compat ============================
-
-# Arbitrum MEV Bot: Arbitrage + Liquidations + Backruns + Profit Recovery + Bridging
-# (Merged from THELORD.py and ALPHA.py)
-# - Experimental arbitrage ranking (Bandit + ML)
-# - Experimental Aave v3 liquidation strategy
-# - Experimental profit recovery: Withdraw, classify (ERC20, ERC4626, aToken, LP), redeem, consolidate, and bridge
-# - Self-healing supervisor for all tasks (arbitrage, liquidations, etc.)
-# - Resilient WSS connection with auto-failover
-# - Color-coded logging; offline regression scope is documented in legacy-tests/README.md
+# On-chain execution engine (research prototype, Arbitrum)
+# Event-driven service that streams blocks over WebSocket, builds a token-price graph from
+# DEX quoters/subgraphs, detects candidate cycles (Johnson / Bellman-Ford), simulates them,
+# and submits transactions through a nonce manager. All live sending is off unless
+# ALLOW_LIVE_TRANSACTIONS is explicitly enabled. Research code: no production use claimed.
+# - Route ranking with a decaying multi-armed bandit
+# - Experimental lending-protocol liquidation path (Aave v3 interfaces)
+# - Asset classification and consolidation helpers (ERC20, ERC4626, aToken, LP)
+# - Supervisor that restarts failed tasks; WebSocket endpoint failover with latency probing
+# - Structured logging; offline regression scope is documented in tests/README.md
 
 import os, json, time, sqlite3, asyncio, aiohttp, random, requests, signal, math, logging, hashlib, statistics, re, inspect
 
-# ============================ Logging Setup (from ALPHA.py) ============================
+# ============================ Logging Setup ============================
 class ColorFormatter(logging.Formatter):
     LEVELS = {
         logging.DEBUG: ("🧩", "\x1b[37m"),    # Grey
@@ -205,26 +52,6 @@ def _install_logging():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 _install_logging()
-
-# --- WS metrics defaults (inserted by patch) ---
-try:
-    METRICS  # type: ignore[name-defined]
-except NameError:
-    from collections import defaultdict
-    METRICS = defaultdict(int)  # basic fallback
-
-METRICS_DEFAULTS_WS = {
-    "ws.events": 0,
-    "ws.pending_events": 0,
-    "ws.newhead_events": 0,
-    "ws.errors": 0,
-    "ws.restarts": 0,
-    "ws.resubscribes": 0,
-    "ws.backoff.ms": 0,
-}
-for k, v in METRICS_DEFAULTS_WS.items():
-    METRICS.setdefault(k, v)
-
 logger = logging.getLogger("arb-bot")
 
 
@@ -489,7 +316,7 @@ async def close_http_session():
 # ============================ Async WSS ============================
 WSS_ACTIVE_URL: Optional[str] = None
 aw3: Optional["AsyncWeb3"] = None
-WSS_SUBPROTOCOL = os.getenv("WS_JSONRPC_SUBPROTOCOL", "").strip() or os.getenv("WSS_SUBPROTOCOL", "").strip() or ""
+WSS_SUBPROTOCOL = os.getenv("WS_JSONRPC_SUBPROTOCOL", "").strip() or ""
 WS_ORIGIN = os.getenv("WS_ORIGIN", "").strip() or None
 
 def _wss_kwargs() -> Dict[str, Any]:
@@ -504,39 +331,23 @@ def _wss_kwargs() -> Dict[str, Any]:
         headers["Origin"] = WS_ORIGIN
     if headers:
         kw["extra_headers"] = headers
-    open_timeout = _env_float("WSS_OPEN_TIMEOUT", 12.0)
+    open_timeout = _env_float("WSS_OPEN_TIMEOUT", 10.0)
     if open_timeout > 0:
         kw["open_timeout"] = open_timeout
-    close_timeout = _env_float("WSS_CLOSE_TIMEOUT", 10.0)
+    close_timeout = _env_float("WSS_CLOSE_TIMEOUT", 5.0)
     if close_timeout > 0:
         kw["close_timeout"] = close_timeout
-    ping_interval = _env_float("WS_PING_INTERVAL", _env_float("WSS_PING_INTERVAL", 20.0))
+    ping_interval = _env_float("WS_PING_INTERVAL", 20.0)
     if ping_interval >= 0:
         kw["ping_interval"] = ping_interval or None
-    ping_timeout = _env_float("WS_PING_TIMEOUT", 20.0)
+    ping_timeout = _env_float("WS_PING_TIMEOUT", 10.0)
     if ping_timeout >= 0:
         kw["ping_timeout"] = ping_timeout or None
-    max_size = _env_int("WS_MAX_SIZE", 10_485_760)  # 10MB default
+    max_size = _env_int("WS_MAX_SIZE", 10_485_760) # 10MB default
     if max_size > 0:
         kw["max_size"] = max_size
-    max_queue = _env_int("WS_MAX_QUEUE", 0)
-    if max_queue > 0:
-        kw["max_queue"] = max_queue
-    # NOTE: 'tcp_keepalive' is not supported by websockets; omit to avoid BaseEventLoop.create_connection() errors
     return kw
 
-def _clean_ws_url(u: str) -> str:
-    """Normalize common mistakes:
-    - strip surrounding quotes/brackets
-    - remove stray angle brackets users sometimes paste around tokens
-    - trim whitespace
-    """
-    if u is None:
-        return ""
-    u = u.strip().strip('"').strip("'")
-    # Users sometimes paste <token> or wrap the whole URL with < >
-    u = u.replace("<", "").replace(">", "")
-    return u
 def _mask_url(u: str) -> str:
     if not u: return "N/A"
     try:
@@ -555,22 +366,11 @@ async def _probe_wss_latency(url: str, attempt_kwargs: List[Dict[str, Any]]) -> 
         provider = None
         try:
             provider = WSProvider(url, **pk)
-            # Important: initialize the websocket connection explicitly (web3.py v6)
-            if hasattr(provider, "connect"):
-                await provider.connect()
             _aw3 = AsyncWeb3(provider)
-            is_conn = False
-            try:
-                # This triggers an RPC call and validates connection
-                is_conn = await _aw3.is_connected()
-            except Exception:
-                is_conn = False
-            if (not is_conn) and WSS_ACCEPT_ON_PROBE:
-                try:
-                    _ = await _aw3.eth.block_number
-                    is_conn = True
-                except Exception:
-                    is_conn = False
+            is_conn = await _aw3.is_connected()
+            if not is_conn and WSS_ACCEPT_ON_PROBE:
+                _ = await _aw3.eth.block_number
+                is_conn = True
             if is_conn:
                 ok = True
                 dt = time.time() - t0
@@ -599,7 +399,7 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     for k in env_keys:
         v = (os.getenv(k) or "").strip()
         if v and v not in seen:
-            candidates.append(_clean_ws_url(v))
+            candidates.append(v[:-3] if v.endswith("/ws") else v)
             seen.add(v)
     if not candidates:
         logger.info("No WSS candidates; WSS disabled.")
@@ -649,24 +449,11 @@ async def _init_wss() -> Optional["AsyncWeb3"]:
     for pk in attempt_kwargs:
         try:
             provider = WSProvider(best_url, **pk)
-            if hasattr(provider, "connect"):
-                await provider.connect()
             _aw3 = AsyncWeb3(provider)
-            ok = False
-            try:
-                ok = await _aw3.is_connected()
-            except Exception:
-                ok = False
-            if not ok:
-                try:
-                    _ = await _aw3.eth.block_number
-                    ok = True
-                except Exception:
-                    ok = False
-            if ok:
+            if await _aw3.is_connected():
                 aw3 = _aw3
                 WSS_ACTIVE_URL = best_url
-                METRICS["wss"] = f"ON({ _mask_url(best_url) })"
+                METRICS["wss"] = f"ON({_mask_url(best_url)})"
                 logger.info("WSS connected to best endpoint: %s", _mask_url(best_url))
                 return _aw3
         except Exception as e:
@@ -686,14 +473,6 @@ async def _auto_wss_initializer():
                 w = await _init_wss()
                 if w:
                     logger.info("WebSocket successfully connected.")
-
-                    # quick self-test: subscribe to newHeads and ensure events arrive
-                    try:
-                        _label = await ws_self_test(w, timeout_seconds=3.0)
-                        logger.info("WSS stream selected: %s", _label)
-                    except Exception as _e:
-                        logger.warning("WSS self-test skipped: %s", _e)
-
                     return w
                 raise ConnectionError("WSS returned None, will retry.")
             except Exception as e:
@@ -722,10 +501,8 @@ async def _auto_wss_initializer():
                 logger.warning("WebSocket appears disconnected. Attempting to reconnect...")
                 
                 if aw3 and aw3.provider:
-                    try:
-                        await aw3.provider.disconnect()
-                    except Exception:
-                        pass
+                    try: await aw3.provider.disconnect()
+                    except Exception: pass
                 
                 new_w3 = await connect_once()
                 if new_w3:
@@ -979,7 +756,7 @@ ERC20_SYMBOL32_ABI = json.loads('[{"constant":true,"inputs":[],"name":"symbol","
 V2_ROUTER_ABI = json.loads('[{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"}],"name":"getAmountsOut","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForTokens","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForTokensSupportingFeeOnTransferTokens","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountAMin","type":"uint256"},{"internalType":"uint256","name":"amountBMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"removeLiquidity","outputs":[{"internalType":"uint256","name":"amountA","type":"uint256"},{"internalType":"uint256","name":"amountB","type":"uint256"}],"stateMutability":"nonpayable","type":"function"}]')
 EXECUTOR_ABI = json.loads('[{"inputs":[{"internalType":"uint8","name":"p","type":"uint8"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"bytes","name":"params","type":"bytes"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"requestFlashLoan","outputs":[],"stateMutability":"nonpayable","type":"function"}]')
 EXECUTOR_MGMT_ABI = json.loads('[{"inputs":[{"internalType":"address","name":"token","type":"address"}],"name":"withdrawProfit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]')
-# --- Power2 v14 pure payload helpers (on-chain encoder)
+# --- FlashExecutor v14 pure payload helpers (on-chain encoder)
 ARB_LIQ_HELPERS_ABI = json.loads(r"""
 [
   {
@@ -1143,35 +920,16 @@ def get_oracle_price(symbol: str) -> Decimal:
         return cached[0] if cached else Decimal("0")
 
 # ============================ Telegram ============================
-async def send_telegram(msg: str, *, parse_mode: str = "Markdown", max_retries: int | None = None):
+async def send_telegram(msg: str):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     session = await _ensure_http_session()
-    max_retries = int(os.getenv("TELEGRAM_MAX_RETRIES", "6")) if max_retries is None else max_retries
-    base = float(os.getenv("TELEGRAM_BACKOFF_BASE", "0.6"))
-    cap = float(os.getenv("TELEGRAM_BACKOFF_CAP", "8.0"))
-    for attempt in range(max_retries):
-        try:
-            resp = await session.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": parse_mode})
-            if resp.status == 200:
-                return
-            if resp.status == 429:
-                # Respect Retry-After if provided
-                ra = resp.headers.get("Retry-After")
-                delay = float(ra) if ra and ra.isdigit() else min(cap, base * (2 ** attempt))
-                logger.warning("Telegram 429; retrying in %.2fs", delay)
-                await asyncio.sleep(delay)
-                continue
-            # Other HTTP errors — backoff and retry
-            delay = min(cap, base * (2 ** attempt))
-            logger.warning("Telegram send HTTP %s; retrying in %.2fs", resp.status, delay)
-            await asyncio.sleep(delay)
-        except Exception as e:
-            delay = min(cap, base * (2 ** attempt))
-            logger.warning("Telegram send failed: %s; retrying in %.2fs", e, delay)
-            await asyncio.sleep(delay)
-    logger.warning("Telegram send permanently failed after %s attempts.", max_retries)
+    try:
+        await session.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"})
+    except Exception as e:
+        logger.warning("Telegram send failed: %s", e)
+
 
 def pretty_timedelta(secs: int) -> str:
     m, s = divmod(int(max(0, secs)), 60)
@@ -1782,7 +1540,7 @@ def erc20_allowance(token: str, owner: str, spender: str) -> int:
         return 0
 
 # ============================ Nonce / TX opts ============================
-from legacy_nonce import NonceMgr
+from nonce_manager import NonceMgr
 
 NONCE = NonceMgr(w3, ACCOUNT_ADDRESS or "0x0000000000000000000000000000000000000000")
 
@@ -1916,7 +1674,7 @@ async def monitor_tx(txh: Optional[str], kind: str, meta: Dict[str, Any]):
     else:
         await send_telegram(f"⏳ {kind.capitalize()} tx not mined in time: `{txh}`")
 
-# ============================ Payload encoding (Power2 v14) ============================
+# ============================ Payload encoding (FlashExecutor v14) ============================
 ARB_SELECTOR_HEX = "0x260751a8"  # for offline fallback
 LIQ_SELECTOR_HEX = "0x64917a78"
 
@@ -1982,8 +1740,8 @@ def _arb_struct_v14(path: List[str], min_output: int, dex_name: str, fees: List[
 def encode_arbitrage_payload(path: List[str], min_output: int, dex_name: str,
                              fees: List[int], deadline: int) -> bytes:
     """
-    Preferred: call Power2.buildArbPayload() (pure) to get abi.encodePacked(ARB_SELECTOR, abi.encode(opp)).
-    Fallback: local abi-encode with the exact tuple signature used by Power2 v14.
+    Preferred: call FlashExecutor.buildArbPayload() (pure) to get abi.encodePacked(ARB_SELECTOR, abi.encode(opp)).
+    Fallback: local abi-encode with the exact tuple signature used by FlashExecutor v14.
     """
     opp = _arb_struct_v14(path, min_output, dex_name, fees, deadline)
 
@@ -2979,17 +2737,17 @@ async def mempool_loop():
                 if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                 try:
                     if mode == "pending":
-                        sub = await _ws_subscribe(aw3, "newPendingTransactions")
+                        sub = await aw3.eth.subscribe("newPendingTransactions")
                         logger.info("WSS subscribed to newPendingTransactions on %s", _mask_url(WSS_ACTIVE_URL))
-                        async for ev in _iter_ws_subscription(aw3, sub):  # via compat stream
+                        async for ev in sub:
                             if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
-                            txh = _extract_tx_hash_from_event(ev) or ""
+                            txh = ev.hex() if isinstance(ev, (bytes, bytearray)) else str(ev)
                             if txh.startswith("0x"):
                                 asyncio.create_task(process_pending_tx_hash(txh))
                     elif mode == "newheads":
-                        sub = await _ws_subscribe(aw3, "newHeads")
+                        sub = await aw3.eth.subscribe("newHeads")
                         logger.info("WSS subscribed to newHeads on %s", _mask_url(WSS_ACTIVE_URL))
-                        async for hdr in _iter_ws_subscription(aw3, sub):  # via compat stream
+                        async for hdr in sub:
                             if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                             bn = hdr.get("number")
                             if bn is not None: _on_new_block(int(bn, 16) if isinstance(bn, str) else int(bn))
@@ -2998,7 +2756,7 @@ async def mempool_loop():
                     await asyncio.sleep(5)
                 finally:
                     if sub:
-                        try: await _ws_unsubscribe(aw3, sub)
+                        try: await aw3.eth.unsubscribe(sub.id)
                         except Exception: pass
         else:
             logger.warning("Mempool polling via HTTP is inefficient and not recommended. Running in degraded mode.")
@@ -3013,9 +2771,9 @@ async def block_header_loop():
         sub = None
         if aw3 is not None and WSS_ACTIVE_URL and "newheads" not in [m.lower() for m in WSS_SUBSCRIBE_ORDER]:
             try:
-                sub = await _ws_subscribe(aw3, "newHeads")
+                sub = await aw3.eth.subscribe("newHeads")
                 logger.info("WSS block header listener on %s", _mask_url(WSS_ACTIVE_URL))
-                async for hdr in _iter_ws_subscription(aw3, sub):  # via compat stream
+                async for hdr in sub:
                     if STOP_EVENT.is_set() or not WSS_READY_EVENT.is_set(): break
                     bn = hdr.get("number")
                     if bn is not None: _on_new_block(int(bn, 16) if isinstance(bn, str) else int(bn))
@@ -3024,11 +2782,11 @@ async def block_header_loop():
                 await asyncio.sleep(5)
             finally:
                 if sub:
-                    try: await _ws_unsubscribe(aw3, sub)
+                    try: await aw3.eth.unsubscribe(sub.id)
                     except Exception: pass
         else:
             try:
-                bn = await asyncio.to_thread(lambda: w3.eth.block_number)
+                bn = await asyncio.to_thread(w3.eth.block_number)
                 if isinstance(bn, int) and bn != last:
                     _on_new_block(bn)
                     last = bn
@@ -3192,7 +2950,7 @@ async def scan_loop():
         except asyncio.TimeoutError:
             pass
 
-# ============================ Liquidation Strategy (from ALPHA.py) ============================
+# ============================ Liquidation Strategy ============================
 # helper: precise user debt (on-chain) + close factor
 def _user_total_debt(user: str, debt_asset: str) -> int:
     try:
@@ -3426,48 +3184,6 @@ async def main():
         if conn:
             conn.close()
         logger.info("Shutdown complete.")
-
-
-
-def _extract_tx_hash_from_event(ev) -> str | None:
-    """Minimal, defensive parse for pending-tx subscription payloads."""
-    if isinstance(ev, (bytes, bytearray)):
-        return ev.hex()
-    if isinstance(ev, str):
-        return ev if ev.startswith("0x") else None
-    if isinstance(ev, dict):
-        for k in ("hash", "transactionHash", "txHash"):
-            v = ev.get(k)
-            if isinstance(v, (bytes, bytearray)):
-                return v.hex()
-            if isinstance(v, str):
-                return v
-    return None
-# ============================ Self-test simulation ============================
-async def selftest_simulation(blocks: int = 3, pendings: int = 5):
-    """Injects fake newHeads and pending tx events into the existing handlers for a quick E2E smoke test.
-    It ONLY runs when explicitly called.
-    """
-    try:
-        WSS_READY_EVENT.set()
-    except Exception:
-        pass
-    # Simulate headers
-    start = int(METRICS.get("last_block", 100000)) if isinstance(METRICS.get("last_block"), int) else 100000
-    for i in range(blocks):
-        _on_new_block(start + i + 1)
-        await asyncio.sleep(0)
-    # Simulate pending tx hashes
-    for i in range(pendings):
-        fake_txh = "0x" + format(i, "064x")
-        try:
-            await process_pending_tx_hash(fake_txh)
-        except Exception as e:
-            logger.debug("Selftest pending-tx error for %s: %s", fake_txh, e)
-    try:
-        WSS_READY_EVENT.clear()
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

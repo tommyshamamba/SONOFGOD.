@@ -4,7 +4,7 @@ const solc = require('solc');
 
 function compile() {
   const sources = {
-    'Power2.sol': { content: fs.readFileSync(path.join(__dirname, '..', 'Power2.sol'), 'utf8') },
+    'FlashExecutor.sol': { content: fs.readFileSync(path.join(__dirname, '..', 'FlashExecutor.sol'), 'utf8') },
     'LenderMocks.sol': { content: fs.readFileSync(path.join(__dirname, 'LenderMocks.sol'), 'utf8') },
     'ERC1967Proxy.sol': { content: fs.readFileSync(path.join(__dirname, '..', 'ERC1967Proxy.sol'), 'utf8') },
   };
@@ -18,7 +18,7 @@ function compile() {
   } }));
   const errors = (result.errors || []).filter(e => e.severity === 'error');
   if (errors.length) throw new Error(errors.map(e => e.formattedMessage).join('\n'));
-  const power = result.contracts['Power2.sol'].Power;
+  const power = result.contracts['FlashExecutor.sol'].Power;
   const size = power.evm.deployedBytecode.object.length / 2;
   if (size > 24576) throw new Error(`Power runtime bytecode ${size} exceeds EIP-170`);
   return result.contracts;
@@ -27,5 +27,5 @@ function compile() {
 module.exports = { compile };
 if (require.main === module) {
   const contracts = compile();
-  console.log(`Solidity ${solc.version()}: Power compiled (${contracts['Power2.sol'].Power.evm.deployedBytecode.object.length / 2} runtime bytes)`);
+  console.log(`Solidity ${solc.version()}: Power compiled (${contracts['FlashExecutor.sol'].Power.evm.deployedBytecode.object.length / 2} runtime bytes)`);
 }

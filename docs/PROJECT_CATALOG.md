@@ -4,7 +4,7 @@
 
 ## Implemented projects
 
-Each entry is a folder in `SONOFGOD.`. Source and setup links below point to the maintained collection rather than similarly named standalone repositories.
+Each entry is a folder in `platform-engineering-portfolio`. Source and setup links below point to the maintained collection rather than similarly named standalone repositories.
 
 | Project | Source and setup | Demonstrable behavior | Boundary |
 | --- | --- | --- | --- |
@@ -24,7 +24,7 @@ These are architecture documents, not runnable applications. They preserve the i
 | --- | --- | --- |
 | `cv-platform-1m-day` | [Queued CV platform](plans/cv-platform-1m-day.md) | Could extend Trace with durable jobs, scale tests and ETL; one million images/day is a target. |
 | `rag-agent-platform` | [Retrieval and agent platform](plans/rag-agent-platform.md) | New implementation; no document embedding or vector retrieval service is present. |
-| `stickermule-clone` | [Custom-product commerce backend](plans/stickermule-clone.md) | Could serve the existing storefront; Go, GraphQL and payment services are not implemented. |
+| `custom-print-storefront` | [Custom-product commerce backend](plans/commerce-backend.md) | Could serve the existing storefront; Go, GraphQL and payment services are not implemented. |
 
 The [proposal index](plans/README.md) defines milestones and the evidence needed before describing these as delivered projects.
 
@@ -38,10 +38,10 @@ The [proposal index](plans/README.md) defines milestones and the evidence needed
 
 ## Verification and next work
 
-Use the [current verification record](VERIFICATION.md) for commands, results and exact-commit evidence. [GitHub Actions](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml) shows the status of each hosted run. The [September local report](LOCAL_DEMO_VERIFICATION.md) and [earlier source review](REVIEW_REPORT.md) are retained as historical evidence.
+Use the [current verification record](VERIFICATION.md) for commands, results and exact-commit evidence. [GitHub Actions](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml) shows the status of each hosted run. The [September local report](LOCAL_DEMO_VERIFICATION.md) and [earlier source review](REVIEW_REPORT.md) are retained as historical evidence.
 
 Implementation priorities remain in the [PR roadmap](PR_ROADMAP.md). Deployment, broader integration coverage and reproducible performance measurements remain separate milestones.
 
-## Legacy experiments
+## On-chain execution engine (research prototype)
 
-The root Python bots and Solidity contracts are separate trading experiments. Their [isolated regression suite](../legacy-tests/README.md) documents the compiler, local VM tests, mocked Python checks and remaining limitations. This is narrower evidence than running a complete bot or interacting with a real protocol. No live transactions or profitable-trading results are claimed.
+The Python services and Solidity executor in `onchain-execution-engine/` are research code. Their [isolated regression suite](../onchain-execution-engine/tests/README.md) documents the compiler, local VM tests, mocked Python checks and remaining limitations. This is narrower evidence than running the complete engine or interacting with a real protocol. No live transactions or profitable-trading results are claimed.

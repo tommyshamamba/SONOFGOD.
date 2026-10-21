@@ -9,7 +9,7 @@ from typing import Any, Dict, Tuple, Optional
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("legacy_nonce", ROOT / "legacy_nonce.py")
+spec = importlib.util.spec_from_file_location("nonce_manager", ROOT / "nonce_manager.py")
 nonce_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nonce_module)
 NonceMgr = nonce_module.NonceMgr
@@ -117,7 +117,7 @@ class NonceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.eth.sent)
 
     async def test_both_bots_assign_nonce_at_submission_and_support_current_signed_tx_field(self):
-        for filename in ("SONOFGOD.py", "JEHOVAH2.0.py"):
+        for filename in ("arbitrage_engine.py", "stream_engine.py"):
             with self.subTest(bot=filename):
                 eth = FakeEth()
                 w3 = SimpleNamespace(eth=eth)
@@ -132,7 +132,7 @@ class NonceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(tx["nonce"], 999)
 
     async def test_both_bots_block_signing_and_submission_without_explicit_opt_in(self):
-        for filename in ("SONOFGOD.py", "JEHOVAH2.0.py"):
+        for filename in ("arbitrage_engine.py", "stream_engine.py"):
             with self.subTest(bot=filename):
                 context = dict(Dict=Dict, Any=Any, Tuple=Tuple, Optional=Optional,
                                ALLOW_LIVE_TRANSACTIONS=False, logger=logging.getLogger("test"))
@@ -142,7 +142,7 @@ class NonceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await send({"nonce": 1}), (False, None))
 
     async def test_both_bots_encode_private_relay_bytes_and_support_legacy_signed_field(self):
-        for filename in ("SONOFGOD.py", "JEHOVAH2.0.py"):
+        for filename in ("arbitrage_engine.py", "stream_engine.py"):
             with self.subTest(bot=filename):
                 eth = FakeEth()
                 eth.block_number = 100
@@ -162,7 +162,7 @@ class NonceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(eth.sent, [])
 
     async def test_both_bots_wrap_dodo_quote_loans_with_actual_pool_base(self):
-        for filename in ("SONOFGOD.py", "JEHOVAH2.0.py"):
+        for filename in ("arbitrage_engine.py", "stream_engine.py"):
             with self.subTest(bot=filename):
                 class Functions:
                     def _BASE_TOKEN_(self):

@@ -1,10 +1,10 @@
 # Tommy Shamamba · Software engineering portfolio
 
-[![Project checks](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml/badge.svg?branch=main)](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml)
+[![Project checks](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml/badge.svg?branch=main)](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml)
 
 Applications, APIs and infrastructure projects covering image processing, interview preparation, database workflows and cloud tooling.
 
-**Start with the featured projects below.** Each links to its source, setup instructions and implementation details. This repository, `SONOFGOD.`, keeps the projects together in one collection.
+**Start with the featured projects below.** Each links to its source, setup instructions and implementation details. This repository, `platform-engineering-portfolio`, keeps the projects together in one collection.
 
 [Project catalog](docs/PROJECT_CATALOG.md) · [Run the demos](docs/LOCAL_DEMOS.md) · [Verification results](docs/VERIFICATION.md) · [Documentation](docs/README.md)
 
@@ -31,6 +31,7 @@ These are development projects with local demonstration workflows. The [verifica
 | [Blockchain API Service](portfolio-projects/blockchain-api-service/) | API authentication and data access | Dashboard, persistent hashed API keys, revocation and an offline query mode; provider configuration supports further integration. |
 | [Kubernetes Demo](portfolio-projects/kubernetes-demo/) | Containerized application delivery | Frontend and backend, Docker Compose, Kubernetes manifests and Terraform configuration. |
 | [Terraform Modules](portfolio-projects/terraform-modules/) | Reusable infrastructure | VPC and application load-balancer modules with examples. |
+| [On-chain Execution Engine](onchain-execution-engine/) | Event-driven processing and transaction coordination | Async block streaming with WebSocket failover, price-graph cycle detection, nonce management and a Solidity executor, covered by offline Python and in-memory EVM tests. |
 | [Voice AI Missed-Call](portfolio-projects/voice-ai-missed-call/) | Event processing and automation | Local missed-call simulation, saved response drafts and duplicate-event handling, plus provider integration guides. |
 
 ## Run a project
@@ -55,28 +56,29 @@ The following documents develop the next project ideas. **They are design propos
 | --- | --- |
 | [CV Platform · 1M images/day target](docs/plans/cv-platform-1m-day.md) | Queued image processing, worker scaling, analytical storage and batch ETL. |
 | [RAG Agent Platform](docs/plans/rag-agent-platform.md) | Document retrieval, grounded responses, controlled tools and quality/cost evaluation. |
-| [Custom-product Commerce Backend](docs/plans/stickermule-clone.md) | Go and GraphQL services, PostgreSQL orders, payment webhooks and tenant isolation. |
+| [Custom-product Commerce Backend](docs/plans/commerce-backend.md) | Go and GraphQL services, PostgreSQL orders, payment webhooks and tenant isolation. |
 
 See the [proposal index](docs/plans/README.md) for scope and implementation priorities. The existing [Trace & Store](trace-stores/) is the starting point for image processing and storefront experiments.
 
 ## Repository map
 
 ```text
-SONOFGOD./
+platform-engineering-portfolio/
 ├── trace-stores/          # Image-processing API and storefront
 ├── portfolio-projects/   # Six application/infrastructure projects
 ├── docs/                 # Catalog, demo guides and verification reports
 │   └── plans/            # Three proposed systems and delivery milestones
+├── onchain-execution-engine/ # Research prototype: event processing + Solidity executor, offline tests
 ├── scripts/              # Source checks and browser smoke checks
 ├── .github/workflows/    # Automated project checks
 └── CONTRIBUTING.md       # Development and contribution workflow
 ```
 
-The root Python and Solidity files are separate trading experiments. Their [isolated regression suite](legacy-tests/README.md) uses mocked RPC behavior and an in-memory EVM. They are outside the application demo launcher and have not been approved for live operation.
+`onchain-execution-engine/` is a research prototype. Its [regression suite](onchain-execution-engine/tests/README.md) uses mocked RPC behavior and an in-memory EVM. It sits outside the demo launcher, sends nothing unless explicitly enabled, and claims no live operation or results.
 
 ## Engineering notes
 
-- **Verification:** [Current results](docs/VERIFICATION.md), [source review](docs/REVIEW_REPORT.md) and [GitHub Actions](https://github.com/tommyshamamba/SONOFGOD./actions/workflows/projects.yml).
+- **Verification:** [Current results](docs/VERIFICATION.md), [source review](docs/REVIEW_REPORT.md) and [GitHub Actions](https://github.com/tommyshamamba/platform-engineering-portfolio/actions/workflows/projects.yml).
 - **Next work:** [Prioritized implementation roadmap](docs/PR_ROADMAP.md) and [deployment-readiness checklist](docs/PRODUCTION_READINESS.md).
 - **Contributions:** [Development workflow](CONTRIBUTING.md). Keep credentials, uploaded documents and runtime records out of Git.
 
